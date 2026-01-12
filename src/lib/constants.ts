@@ -98,6 +98,7 @@ export const STEPS = [
   { id: 1, title: 'Welcome', description: 'Tell us about yourself' },
   { id: 2, title: 'KCSE Results', description: 'Enter your grades' },
   { id: 3, title: 'Interests', description: 'Career preferences' },
-  { id: 4, title: 'Payment', description: 'Unlock results' },
-  { id: 5, title: 'Results', description: 'Your matches' },
+  { id: 4, title: 'Clusters', description: 'Eligibility summary' },
+  { id: 5, title: 'Payment', description: 'Unlock results' },
+  { id: 6, title: 'Results', description: 'Your matches' },
 ];

@@ -14,6 +14,59 @@ export type Database = {
   }
   public: {
     Tables: {
+      cluster_subject_requirements: {
+        Row: {
+          category: string
+          cluster_id: string
+          id: string
+          min_grade: string | null
+          subject: string
+          weight: number
+        }
+        Insert: {
+          category: string
+          cluster_id: string
+          id?: string
+          min_grade?: string | null
+          subject: string
+          weight?: number
+        }
+        Update: {
+          category?: string
+          cluster_id?: string
+          id?: string
+          min_grade?: string | null
+          subject?: string
+          weight?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "cluster_subject_requirements_cluster_id_fkey"
+            columns: ["cluster_id"]
+            isOneToOne: false
+            referencedRelation: "clusters"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      clusters: {
+        Row: {
+          description: string | null
+          id: string
+          name: string
+        }
+        Insert: {
+          description?: string | null
+          id: string
+          name: string
+        }
+        Update: {
+          description?: string | null
+          id?: string
+          name?: string
+        }
+        Relationships: []
+      }
       course_cluster_subjects: {
         Row: {
           course_id: string
@@ -49,35 +102,52 @@ export type Database = {
       courses: {
         Row: {
           career_paths: string[] | null
+          cluster_id: string | null
           created_at: string
+          cutoff_2024: number | null
           description: string | null
           field: string
           id: string
+          institution: string | null
           mean_grade_required: string
           mean_points_required: number
           name: string
         }
         Insert: {
           career_paths?: string[] | null
+          cluster_id?: string | null
           created_at?: string
+          cutoff_2024?: number | null
           description?: string | null
           field: string
           id?: string
+          institution?: string | null
           mean_grade_required: string
           mean_points_required: number
           name: string
         }
         Update: {
           career_paths?: string[] | null
+          cluster_id?: string | null
           created_at?: string
+          cutoff_2024?: number | null
           description?: string | null
           field?: string
           id?: string
+          institution?: string | null
           mean_grade_required?: string
           mean_points_required?: number
           name?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "courses_cluster_id_fkey"
+            columns: ["cluster_id"]
+            isOneToOne: false
+            referencedRelation: "clusters"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       eligibility_results: {
         Row: {
@@ -225,6 +295,51 @@ export type Database = {
             columns: ["course_id"]
             isOneToOne: false
             referencedRelation: "courses"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      user_cluster_results: {
+        Row: {
+          cluster_id: string
+          cluster_score: number
+          created_at: string
+          eligibility_status: string
+          id: string
+          subjects_used: Json
+          user_id: string
+        }
+        Insert: {
+          cluster_id: string
+          cluster_score: number
+          created_at?: string
+          eligibility_status: string
+          id?: string
+          subjects_used: Json
+          user_id: string
+        }
+        Update: {
+          cluster_id?: string
+          cluster_score?: number
+          created_at?: string
+          eligibility_status?: string
+          id?: string
+          subjects_used?: Json
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "user_cluster_results_cluster_id_fkey"
+            columns: ["cluster_id"]
+            isOneToOne: false
+            referencedRelation: "clusters"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "user_cluster_results_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "users"
             referencedColumns: ["id"]
           },
         ]
