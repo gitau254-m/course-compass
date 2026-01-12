@@ -85,7 +85,7 @@ export function PaymentStep() {
           }
 
           toast.success('Payment confirmed! Loading your results...');
-          setCurrentStep(5);
+          setCurrentStep(6);
         } catch (error) {
           console.error('Payment confirmation error:', error);
           toast.error('Payment verification failed. Please try again.');
@@ -120,7 +120,7 @@ export function PaymentStep() {
 
       setPayment({ ...paymentData, status: paymentData.status as 'pending' | 'confirmed' | 'failed' });
       toast.success('Demo mode: Proceeding to results...');
-      setCurrentStep(5);
+      setCurrentStep(6);
     } catch (error) {
       console.error('Error:', error);
     }
@@ -216,7 +216,7 @@ export function PaymentStep() {
       <div className="flex gap-3">
         <Button
           variant="outline"
-          onClick={() => setCurrentStep(3)}
+          onClick={() => setCurrentStep(4)}
           disabled={isPending}
           className="flex-1"
         >

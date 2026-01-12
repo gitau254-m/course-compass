@@ -3,6 +3,7 @@ import { StepIndicator } from './StepIndicator';
 import { WelcomeStep } from './steps/WelcomeStep';
 import { KCSEResultsStep } from './steps/KCSEResultsStep';
 import { InterestStep } from './steps/InterestStep';
+import { ClusterSummaryStep } from './steps/ClusterSummaryStep';
 import { PaymentStep } from './steps/PaymentStep';
 import { ResultsStep } from './steps/ResultsStep';
 import { GraduationCap } from 'lucide-react';
@@ -19,8 +20,10 @@ export function AppShell() {
       case 3:
         return <InterestStep />;
       case 4:
-        return <PaymentStep />;
+        return <ClusterSummaryStep />;
       case 5:
+        return <PaymentStep />;
+      case 6:
         return <ResultsStep />;
       default:
         return <WelcomeStep />;
@@ -41,7 +44,7 @@ export function AppShell() {
             </span>
           </div>
         </div>
-        {currentStep > 1 && currentStep < 5 && (
+        {currentStep > 1 && currentStep < 6 && (
           <div className="border-t border-border bg-background">
             <StepIndicator />
           </div>
