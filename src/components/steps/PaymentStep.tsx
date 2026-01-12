@@ -78,10 +78,11 @@ export function PaymentStep() {
             .select()
             .single();
 
+          if (updateError) throw updateError;
+
           if (confirmedPayment) {
             setPayment({ ...confirmedPayment, status: confirmedPayment.status as 'pending' | 'confirmed' | 'failed' });
-
-          if (updateError) throw updateError;
+          }
 
           toast.success('Payment confirmed! Loading your results...');
           setCurrentStep(5);
@@ -117,7 +118,7 @@ export function PaymentStep() {
 
       if (error) throw error;
 
-      setPayment(paymentData);
+      setPayment({ ...paymentData, status: paymentData.status as 'pending' | 'confirmed' | 'failed' });
       toast.success('Demo mode: Proceeding to results...');
       setCurrentStep(5);
     } catch (error) {
