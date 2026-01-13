@@ -15,7 +15,9 @@ import {
   AlertTriangle,
   Layers,
   Target,
-  BookOpen
+  BookOpen,
+  Lock,
+  CreditCard
 } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { 
@@ -27,16 +29,50 @@ import {
 } from '@/lib/clusterEngine';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
+import { isPaymentConfirmed } from '@/lib/paymentConfig';
 
 export function ResultsStep() {
-  const { user, compulsorySubjects, optionalSubjects, interestResponses, resetApp } = useApp();
+  const { user, compulsorySubjects, optionalSubjects, interestResponses, resetApp, payment, setCurrentStep } = useApp();
   const [courses, setCourses] = useState<CourseMatch[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [expandedCourse, setExpandedCourse] = useState<string | null>(null);
+  const [isPaymentValid, setIsPaymentValid] = useState(false);
 
+  // Verify payment status on mount
   useEffect(() => {
-    calculateEligibility();
-  }, []);
+    const verifyPayment = async () => {
+      // Check if payment exists and is confirmed
+      if (payment && isPaymentConfirmed(payment.status)) {
+        setIsPaymentValid(true);
+        calculateEligibility();
+        return;
+      }
+
+      // Double-check in database
+      if (user?.id) {
+        const { data: dbPayment, error } = await supabase
+          .from('payments')
+          .select('*')
+          .eq('user_id', user.id)
+          .eq('status', 'confirmed')
+          .order('created_at', { ascending: false })
+          .limit(1)
+          .single();
+
+        if (!error && dbPayment) {
+          setIsPaymentValid(true);
+          calculateEligibility();
+          return;
+        }
+      }
+
+      // No valid payment found
+      setIsPaymentValid(false);
+      setIsLoading(false);
+    };
+
+    verifyPayment();
+  }, [payment, user?.id]);
 
   const calculateEligibility = async () => {
     setIsLoading(true);
@@ -145,6 +181,25 @@ export function ResultsStep() {
   const likelyEligible = courses.filter(c => c.eligibilityStatus === 'likely_eligible');
   const borderline = courses.filter(c => c.eligibilityStatus === 'borderline');
   const notCompetitive = courses.filter(c => c.eligibilityStatus === 'not_competitive');
+
+  // Payment not verified - show locked state
+  if (!isPaymentValid && !isLoading) {
+    return (
+      <div className="fade-in max-w-md mx-auto px-4 py-12 text-center">
+        <div className="w-20 h-20 bg-destructive/10 rounded-full flex items-center justify-center mx-auto mb-4">
+          <Lock className="w-10 h-10 text-destructive" />
+        </div>
+        <h2 className="text-xl font-semibold mb-2">Results Locked</h2>
+        <p className="text-muted-foreground text-sm mb-6">
+          Your payment could not be verified. Please complete payment to view your course matches.
+        </p>
+        <Button onClick={() => setCurrentStep(5)} className="gap-2">
+          <CreditCard className="w-4 h-4" />
+          Complete Payment
+        </Button>
+      </div>
+    );
+  }
 
   if (isLoading) {
     return (
