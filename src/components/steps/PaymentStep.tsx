@@ -1,23 +1,24 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useApp } from '@/contexts/AppContext';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { ArrowLeft, CreditCard, Phone, CheckCircle, Loader2, Shield } from 'lucide-react';
-import { supabase } from '@/integrations/supabase/client';
-import { toast } from 'sonner';
+import { ArrowLeft, CreditCard, Phone, Loader2, Shield, CheckCircle } from 'lucide-react';
+import { usePayment } from '@/hooks/usePayment';
+import { shouldUseMockPayment, getPaymentMode } from '@/lib/paymentConfig';
+import { Badge } from '@/components/ui/badge';
 
 export function PaymentStep() {
   const { user, setCurrentStep, setPayment } = useApp();
   const [phone, setPhone] = useState(user?.phone || '');
-  const [isLoading, setIsLoading] = useState(false);
-  const [isPending, setIsPending] = useState(false);
+  const { initiatePayment, pollPaymentStatus, isLoading, isPending } = usePayment();
+  const [currentPaymentId, setCurrentPaymentId] = useState<string | null>(null);
+
+  const isDevelopment = shouldUseMockPayment();
 
   const formatPhone = (value: string) => {
-    // Remove non-digits
     let cleaned = value.replace(/\D/g, '');
     
-    // Handle Kenyan phone formats
     if (cleaned.startsWith('254')) {
       cleaned = cleaned.substring(3);
     } else if (cleaned.startsWith('0')) {
@@ -35,94 +36,50 @@ export function PaymentStep() {
     return null;
   };
 
+  // Poll for payment status in production mode
+  useEffect(() => {
+    if (!isPending || !currentPaymentId || isDevelopment) return;
+
+    const interval = setInterval(async () => {
+      const result = await pollPaymentStatus(currentPaymentId);
+      
+      if (result && result.status === 'confirmed') {
+        setPayment({
+          ...result,
+          status: result.status,
+        });
+        setCurrentStep(6);
+        clearInterval(interval);
+      } else if (result && result.status === 'failed') {
+        setCurrentPaymentId(null);
+        clearInterval(interval);
+      }
+    }, 3000);
+
+    return () => clearInterval(interval);
+  }, [isPending, currentPaymentId, isDevelopment, pollPaymentStatus, setPayment, setCurrentStep]);
+
   const handlePayment = async () => {
     const fullPhone = getFullPhone();
     
-    if (!fullPhone) {
-      toast.error('Please enter a valid Kenyan phone number');
+    if (!fullPhone && !isDevelopment) {
       return;
     }
 
-    setIsLoading(true);
-
-    try {
-      // Create pending payment record
-      const { data: paymentData, error: paymentError } = await supabase
-        .from('payments')
-        .insert({
-          user_id: user!.id,
-          phone: fullPhone,
-          amount: 70,
-          status: 'pending',
-        })
-        .select()
-        .single();
-
-      if (paymentError) throw paymentError;
-
-      setIsPending(true);
-      toast.info('STK Push sent to your phone. Please enter your M-Pesa PIN.');
-
-      // Simulate STK push - in production, this would call an edge function
-      // that integrates with M-Pesa Daraja API
-      setTimeout(async () => {
-        try {
-          // Simulate payment confirmation
-          const { data: confirmedPayment, error: updateError } = await supabase
-            .from('payments')
-            .update({ 
-              status: 'confirmed' as const,
-              mpesa_receipt: `QK${Date.now().toString(36).toUpperCase()}`,
-            })
-            .eq('id', paymentData.id)
-            .select()
-            .single();
-
-          if (updateError) throw updateError;
-
-          if (confirmedPayment) {
-            setPayment({ ...confirmedPayment, status: confirmedPayment.status as 'pending' | 'confirmed' | 'failed' });
-          }
-
-          toast.success('Payment confirmed! Loading your results...');
-          setCurrentStep(6);
-        } catch (error) {
-          console.error('Payment confirmation error:', error);
-          toast.error('Payment verification failed. Please try again.');
-          setIsPending(false);
-        }
-      }, 3000);
-
-    } catch (error) {
-      console.error('Payment error:', error);
-      toast.error('Failed to initiate payment. Please try again.');
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  const handleSkipPayment = async () => {
-    // For demo purposes - remove in production
-    try {
-      const { data: paymentData, error } = await supabase
-        .from('payments')
-        .insert({
-          user_id: user!.id,
-          phone: '254712345678',
-          amount: 70,
-          status: 'confirmed',
-          mpesa_receipt: `DEMO${Date.now().toString(36).toUpperCase()}`,
-        })
-        .select()
-        .single();
-
-      if (error) throw error;
-
-      setPayment({ ...paymentData, status: paymentData.status as 'pending' | 'confirmed' | 'failed' });
-      toast.success('Demo mode: Proceeding to results...');
-      setCurrentStep(6);
-    } catch (error) {
-      console.error('Error:', error);
+    const result = await initiatePayment(user!.id, fullPhone || '254712345678');
+    
+    if (result) {
+      if (result.status === 'confirmed') {
+        // Development mode - instant confirmation
+        setPayment({
+          ...result,
+          status: result.status,
+        });
+        setCurrentStep(6);
+      } else {
+        // Production mode - wait for callback
+        setCurrentPaymentId(result.id);
+      }
     }
   };
 
@@ -138,6 +95,12 @@ export function PaymentStep() {
         <p className="text-muted-foreground text-sm mt-1">
           Pay KSH 70 via M-Pesa to view your course matches
         </p>
+        
+        {isDevelopment && (
+          <Badge variant="outline" className="mt-2 bg-amber-500/10 text-amber-600 border-amber-500/30">
+            Development Mode - Payments Auto-Confirmed
+          </Badge>
+        )}
       </div>
 
       <div className="glass-card rounded-2xl p-6 mb-6">
@@ -164,27 +127,30 @@ export function PaymentStep() {
                     value={phone}
                     onChange={(e) => setPhone(e.target.value)}
                     className="h-12 pl-10"
+                    disabled={isDevelopment}
                   />
                 </div>
                 <p className="text-xs text-muted-foreground">
-                  Enter the number registered with M-Pesa
+                  {isDevelopment 
+                    ? 'Phone number not required in development mode'
+                    : 'Enter the number registered with M-Pesa'}
                 </p>
               </div>
 
               <Button
                 onClick={handlePayment}
-                disabled={isLoading || !getFullPhone()}
+                disabled={isLoading || (!getFullPhone() && !isDevelopment)}
                 className="w-full h-12 bg-success hover:bg-success/90"
               >
                 {isLoading ? (
                   <>
                     <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                    Initiating...
+                    {isDevelopment ? 'Processing...' : 'Initiating...'}
                   </>
                 ) : (
                   <>
-                    Pay with M-Pesa
-                    <Phone className="w-4 h-4 ml-2" />
+                    {isDevelopment ? 'Continue (Dev Mode)' : 'Pay with M-Pesa'}
+                    {isDevelopment ? <CheckCircle className="w-4 h-4 ml-2" /> : <Phone className="w-4 h-4 ml-2" />}
                   </>
                 )}
               </Button>
@@ -225,14 +191,11 @@ export function PaymentStep() {
         </Button>
       </div>
 
-      {/* Demo skip button - remove in production */}
+      {/* Payment mode indicator for debugging */}
       <div className="mt-6 text-center">
-        <button
-          onClick={handleSkipPayment}
-          className="text-xs text-muted-foreground hover:text-foreground underline"
-        >
-          Demo: Skip payment
-        </button>
+        <p className="text-xs text-muted-foreground">
+          Payment Mode: <span className="font-mono">{getPaymentMode()}</span>
+        </p>
       </div>
     </div>
   );
