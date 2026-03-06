@@ -2,476 +2,394 @@ import { useEffect, useState } from 'react';
 import { useApp } from '@/contexts/AppContext';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { 
-  GraduationCap, 
-  MapPin, 
-  Briefcase, 
-  ChevronDown, 
-  ChevronUp, 
-  RefreshCw,
-  CheckCircle,
-  TrendingUp,
-  TrendingDown,
-  AlertTriangle,
-  Layers,
-  Target,
-  BookOpen,
-  Lock,
-  CreditCard
+import {
+  GraduationCap, MapPin, ChevronDown, ChevronUp, RefreshCw,
+  TrendingUp, TrendingDown, AlertTriangle, Layers, BookOpen,
+  Lock, CreditCard, Info, Star, ArrowLeft, Search,
 } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
-import { 
-  ClusterDefinition,
-  CourseMatch,
-  calculateAllClusterResults,
-  matchCoursesWithCutoffs,
-  getEligibilityDisplay
+import {
+  ClusterDefinition, CourseMatch, KuccpsChoice,
+  calculateAllClusterResults, matchCoursesWithCutoffs,
+  getEligibilityDisplay, buildKuccpsChoices,
 } from '@/lib/clusterEngine';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
-import { isPaymentConfirmed } from '@/lib/paymentConfig';
+
+const shouldUseMockPayment = () => import.meta.env.VITE_PAYMENT_MODE !== 'production';
+
+function buildFieldScores(interestResponses: Record<string, any>): Record<string, number> {
+  const scores: Record<string, number> = {};
+  Object.values(interestResponses).forEach((resp: any) => {
+    const fs: Record<string, number> = resp?.fieldScores ?? {};
+    Object.entries(fs).forEach(([field, delta]) => { scores[field] = (scores[field] || 0) + (delta as number); });
+    if (!resp?.fieldScores && resp?.fields && Array.isArray(resp.fields)) {
+      const s: number = resp.score ?? 0;
+      (resp.fields as string[]).forEach(f => { scores[f] = (scores[f] || 0) + s; });
+    }
+  });
+  return scores;
+}
+
+function ScorePill({ diff }: { diff: number }) {
+  if (diff >= 1.0) return <span className="flex items-center gap-1 text-green-700 text-xs font-semibold"><TrendingUp className="w-3 h-3" />+{diff.toFixed(3)}</span>;
+  if (diff >= -1.0) return <span className="flex items-center gap-1 text-yellow-600 text-xs font-semibold"><AlertTriangle className="w-3 h-3" />{diff.toFixed(3)}</span>;
+  return <span className="flex items-center gap-1 text-red-600 text-xs font-semibold"><TrendingDown className="w-3 h-3" />{diff.toFixed(3)}</span>;
+}
+
+function CourseCard({ choice, isExpanded, onToggle, positionLabel, isTopSlot }: {
+  choice: KuccpsChoice; isExpanded: boolean; onToggle: () => void;
+  positionLabel: string; isTopSlot: boolean;
+}) {
+  const { course } = choice;
+  const { label, color, bgColor, borderColor } = getEligibilityDisplay(course.eligibilityStatus);
+
+  return (
+    <div className={cn('rounded-2xl border overflow-hidden transition-shadow', bgColor, borderColor, isTopSlot ? 'shadow-md' : 'shadow-sm hover:shadow-md')}>
+      <div className="p-4">
+        <div className="flex items-start gap-3">
+          <div className={cn(
+            'flex-shrink-0 w-10 h-10 rounded-full flex items-center justify-center font-bold text-xs',
+            isTopSlot ? 'bg-primary text-primary-foreground shadow' : 'bg-muted text-muted-foreground'
+          )}>{positionLabel}</div>
+          <div className="flex-1 min-w-0">
+            <h3 className="font-semibold text-sm leading-snug">{course.courseName}</h3>
+            <p className="text-xs text-muted-foreground mt-0.5 flex items-center gap-1 flex-wrap">
+              <MapPin className="w-3 h-3 flex-shrink-0" />{course.institution}
+              {course.county && ` · ${course.county}`}
+              {course.institutionType && (
+                <span className={cn('px-1.5 rounded text-[10px] font-medium',
+                  course.institutionType === 'PUBLIC' ? 'bg-blue-100 text-blue-700' : 'bg-purple-100 text-purple-700'
+                )}>{course.institutionType}</span>
+              )}
+            </p>
+            <p className="text-[10px] text-muted-foreground mt-0.5">
+              {course.clusterName}{course.programmeCode && ` · Code: ${course.programmeCode}`}
+            </p>
+          </div>
+          <Badge className={cn('text-[10px] flex-shrink-0 border', color, bgColor, borderColor)}>{label}</Badge>
+        </div>
+
+        <div className="mt-3 flex items-center justify-between bg-white/60 rounded-lg px-3 py-2 gap-2 flex-wrap">
+          <div className="text-center">
+            <div className="text-[10px] text-muted-foreground">Your est. pts</div>
+            <div className="font-bold text-primary text-base">{course.userClusterScore.toFixed(3)}</div>
+          </div>
+          <div className="text-muted-foreground text-xs font-medium">vs</div>
+          <div className="text-center">
+            <div className="text-[10px] text-muted-foreground">2024 cutoff</div>
+            <div className="font-bold text-sm">{course.cutoff2024.toFixed(3)}</div>
+          </div>
+          <div className="text-center">
+            <div className="text-[10px] text-muted-foreground">Gap</div>
+            <ScorePill diff={course.scoreDifference} />
+          </div>
+          {course.cutoff2023 != null && (
+            <div className="text-center hidden sm:block">
+              <div className="text-[10px] text-muted-foreground">2023 cutoff</div>
+              <div className="font-semibold text-xs">{course.cutoff2023.toFixed(3)}</div>
+            </div>
+          )}
+        </div>
+
+        <button onClick={onToggle} className="mt-3 w-full text-xs text-primary flex items-center justify-center gap-1 hover:underline">
+          {isExpanded ? <><ChevronUp className="w-3 h-3" />Hide subjects</> : <><ChevronDown className="w-3 h-3" />Show cluster subjects</>}
+        </button>
+      </div>
+
+      {isExpanded && (
+        <div className="px-4 pb-4 border-t border-border/30 bg-white/40">
+          <div className="pt-3 space-y-3">
+            <div>
+              <p className="text-xs font-semibold text-muted-foreground mb-1.5 flex items-center gap-1">
+                <Layers className="w-3.5 h-3.5" /> Cluster Subjects (r={course.subjectsUsed.reduce((s, x) => s + x.points, 0)}/48)
+              </p>
+              <div className="flex flex-wrap gap-1.5">
+                {course.subjectsUsed.map((s, i) => (
+                  <span key={i} className="text-[11px] bg-muted px-2 py-0.5 rounded-full border">
+                    {s.subject}: <strong>{s.grade}</strong> ({s.points}pts)
+                  </span>
+                ))}
+              </div>
+            </div>
+            <div className="flex items-start gap-2 bg-amber-50 border border-amber-200 rounded-lg p-2.5">
+              <Info className="w-3.5 h-3.5 text-amber-600 flex-shrink-0 mt-0.5" />
+              <p className="text-[11px] text-amber-700">
+                <strong>ESTIMATED.</strong> Calibrated to match real KUCCPS 2024 data.
+                Verify on <strong>students.kuccps.net</strong>.
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
 
 export function ResultsStep() {
   const { user, compulsorySubjects, optionalSubjects, interestResponses, resetApp, payment, setCurrentStep } = useApp();
-  const [courses, setCourses] = useState<CourseMatch[]>([]);
+  const [choices, setChoices] = useState<KuccpsChoice[]>([]);
   const [isLoading, setIsLoading] = useState(true);
-  const [expandedCourse, setExpandedCourse] = useState<string | null>(null);
   const [isPaymentValid, setIsPaymentValid] = useState(false);
+  const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [searchQuery, setSearchQuery] = useState('');
 
-  // Verify payment status on mount
-  useEffect(() => {
-    const verifyPayment = async () => {
-      // Check if payment exists and is confirmed
-      if (payment && isPaymentConfirmed(payment.status)) {
-        setIsPaymentValid(true);
-        calculateEligibility();
-        return;
-      }
+  useEffect(() => { verifyAndLoad(); }, []);
 
-      // Double-check in database
-      if (user?.id) {
-        const { data: dbPayment, error } = await supabase
-          .from('payments')
-          .select('*')
-          .eq('user_id', user.id)
-          .eq('status', 'confirmed')
-          .order('created_at', { ascending: false })
-          .limit(1)
-          .single();
-
-        if (!error && dbPayment) {
-          setIsPaymentValid(true);
-          calculateEligibility();
-          return;
-        }
-      }
-
-      // No valid payment found
-      setIsPaymentValid(false);
-      setIsLoading(false);
-    };
-
-    verifyPayment();
-  }, [payment, user?.id]);
+  const verifyAndLoad = async () => {
+    if (shouldUseMockPayment()) { setIsPaymentValid(true); await calculateEligibility(); return; }
+    if (payment?.status === 'confirmed') { setIsPaymentValid(true); await calculateEligibility(); return; }
+    if (user?.id) {
+      const { data } = await supabase.from('payments').select('id,status')
+        .eq('user_id', user.id).eq('status', 'confirmed').limit(1).maybeSingle();
+      if (data) { setIsPaymentValid(true); await calculateEligibility(); return; }
+    }
+    setIsPaymentValid(false);
+    setIsLoading(false);
+  };
 
   const calculateEligibility = async () => {
     setIsLoading(true);
-    
     try {
-      // Fetch cluster definitions with requirements
-      const { data: clustersData, error: clustersError } = await supabase
-        .from('clusters')
-        .select(`
-          *,
-          cluster_subject_requirements(*)
-        `);
+      const { data: clustersData, error: cErr } = await supabase
+        .from('clusters').select('*, cluster_subject_requirements(*)');
+      if (cErr) throw cErr;
 
-      if (clustersError) throw clustersError;
+      const { data: coursesData, error: coErr } = await supabase
+        .from('courses').select('id,name,institution,field,cluster_id,cutoff_2024,cutoff_2023,programme_code,institution_type,county,cluster_weight');
+      if (coErr) throw coErr;
 
-      // Fetch courses with cut-off data
-      const { data: coursesData, error: coursesError } = await supabase
-        .from('courses')
-        .select('*');
+      if (!coursesData?.length) { toast.error('No courses found'); setIsLoading(false); return; }
 
-      if (coursesError) throw coursesError;
-
-      if (!coursesData || coursesData.length === 0) {
-        toast.error('No courses found in database');
-        setIsLoading(false);
-        return;
-      }
-
-      // Format cluster data
-      const clusters: ClusterDefinition[] = (clustersData || []).map(c => ({
-        id: c.id,
-        name: c.name,
-        description: c.description,
-        requirements: (c.cluster_subject_requirements || []).map((r) => ({
-          cluster_id: r.cluster_id,
-          subject: r.subject,
-          category: r.category as 'compulsory' | 'group1' | 'group2' | 'group3' | 'any',
-          min_grade: r.min_grade,
-          weight: Number(r.weight)
-        }))
+      const clusters: ClusterDefinition[] = (clustersData ?? []).map((c: any) => ({
+        id: c.id, name: c.name, description: c.description ?? null,
+        requirements: (c.cluster_subject_requirements ?? []).map((r: any) => ({
+          cluster_id: r.cluster_id, subject: r.subject, category: r.category,
+          min_grade: r.min_grade ?? null, weight: Number(r.weight) || 0.25,
+        })),
       }));
 
-      // Get user grades
       const allSubjects = [...compulsorySubjects, ...optionalSubjects].filter(s => s.grade);
-
-      // Calculate interest score by field
-      const fieldScores: Record<string, number> = {};
-      Object.values(interestResponses).forEach(response => {
-        response.fields.forEach(field => {
-          fieldScores[field] = (fieldScores[field] || 0) + response.score;
-        });
-      });
-
-      // Calculate all cluster results
+      const fieldScores = buildFieldScores(interestResponses as Record<string, any>);
       const clusterResults = calculateAllClusterResults(allSubjects, clusters);
+      const matches = matchCoursesWithCutoffs(clusterResults, coursesData as any, fieldScores);
+      setChoices(buildKuccpsChoices(matches));
 
-      // Match courses with cut-offs
-      const matches = matchCoursesWithCutoffs(clusterResults, coursesData, fieldScores);
-
-      setCourses(matches);
-
-      // Save results to database
+      // Save to DB
       if (user?.id && matches.length > 0) {
-        const resultsToSave = matches.slice(0, 20).map(m => ({
-          user_id: user.id,
-          course_id: m.courseId,
-          cluster_score: m.userClusterScore,
-          interest_score: m.interestScore,
-          final_rank: m.eligibilityStatus === 'likely_eligible' ? 'High' : 
-                      m.eligibilityStatus === 'borderline' ? 'Medium' : 'Low',
+        const toSave = matches.slice(0, 25).map(m => ({
+          user_id: user.id, course_id: m.courseId, course_name: m.courseName,
+          university: m.institution, cluster_code: m.clusterName,
+          cluster_score: m.userClusterScore, course_cutoff: m.cutoff2024,
+          status: m.eligibilityStatus === 'likely_eligible' ? 'eligible'
+            : m.eligibilityStatus === 'borderline' ? 'borderline' : 'not_eligible',
         }));
-
-        await supabase.from('eligibility_results').insert(resultsToSave);
+        supabase.from('eligibility_results').insert(toSave).then(() => { });
       }
-
-    } catch (error) {
-      console.error('Error calculating eligibility:', error);
+    } catch (err) {
+      console.error(err);
       toast.error('Failed to load results. Please try again.');
     } finally {
       setIsLoading(false);
     }
   };
 
-  const getEligibilityIcon = (status: string) => {
-    switch (status) {
-      case 'likely_eligible':
-        return <CheckCircle className="w-4 h-4" />;
-      case 'borderline':
-        return <AlertTriangle className="w-4 h-4" />;
-      default:
-        return <TrendingDown className="w-4 h-4" />;
-    }
-  };
-
-  const getScoreDifferenceDisplay = (diff: number) => {
-    if (diff >= 2) {
-      return { text: `+${diff.toFixed(1)}`, color: 'text-green-600', icon: <TrendingUp className="w-3 h-3" /> };
-    } else if (diff >= -2) {
-      return { text: diff >= 0 ? `+${diff.toFixed(1)}` : diff.toFixed(1), color: 'text-yellow-600', icon: <TrendingUp className="w-3 h-3 rotate-0" /> };
-    } else {
-      return { text: diff.toFixed(1), color: 'text-red-600', icon: <TrendingDown className="w-3 h-3" /> };
-    }
-  };
-
-  // Group courses by eligibility status
-  const likelyEligible = courses.filter(c => c.eligibilityStatus === 'likely_eligible');
-  const borderline = courses.filter(c => c.eligibilityStatus === 'borderline');
-  const notCompetitive = courses.filter(c => c.eligibilityStatus === 'not_competitive');
-
-  // Payment not verified - show locked state
-  if (!isPaymentValid && !isLoading) {
-    return (
-      <div className="fade-in max-w-md mx-auto px-4 py-12 text-center">
-        <div className="w-20 h-20 bg-destructive/10 rounded-full flex items-center justify-center mx-auto mb-4">
-          <Lock className="w-10 h-10 text-destructive" />
-        </div>
-        <h2 className="text-xl font-semibold mb-2">Results Locked</h2>
-        <p className="text-muted-foreground text-sm mb-6">
-          Your payment could not be verified. Please complete payment to view your course matches.
-        </p>
-        <Button onClick={() => setCurrentStep(5)} className="gap-2">
-          <CreditCard className="w-4 h-4" />
-          Complete Payment
-        </Button>
+  // ── Loading ────────────────────────────────────────────────────────────
+  if (isLoading) return (
+    <div className="fade-in max-w-2xl mx-auto px-4 py-12 text-center">
+      <div className="w-20 h-20 bg-primary/20 rounded-full flex items-center justify-center mx-auto mb-4 pulse-gentle">
+        <GraduationCap className="w-10 h-10 text-primary" />
       </div>
-    );
-  }
+      <h2 className="text-xl font-semibold mb-2">Generating Your KUCCPS Choices</h2>
+      <p className="text-muted-foreground text-sm">Ranking courses by calibrated cluster points &amp; interests…</p>
+    </div>
+  );
 
-  if (isLoading) {
-    return (
-      <div className="fade-in max-w-2xl mx-auto px-4 py-12 text-center">
-        <div className="w-20 h-20 bg-primary/20 rounded-full flex items-center justify-center mx-auto mb-4 pulse-gentle">
-          <GraduationCap className="w-10 h-10 text-primary" />
-        </div>
-        <h2 className="text-xl font-semibold mb-2">Analyzing Your Results</h2>
-        <p className="text-muted-foreground">Matching courses with 2024 cut-off points...</p>
-      </div>
-    );
-  }
-
-  return (
-    <div className="fade-in max-w-2xl mx-auto px-4 pb-12">
-      <div className="text-center mb-6">
-        <div className="w-14 h-14 bg-success/20 rounded-full flex items-center justify-center mx-auto mb-3">
-          <CheckCircle className="w-8 h-8 text-success" />
-        </div>
-        <h2 className="text-xl sm:text-2xl font-display font-bold text-foreground">
-          Your Course Matches
-        </h2>
-        <p className="text-muted-foreground text-sm mt-1">
-          Compared against 2024 KUCCPS cut-off points
-        </p>
-      </div>
-
-      {/* Kenya stripe decoration */}
-      <div className="kenya-stripe rounded-full mb-6" />
-
-      {/* Summary Stats */}
-      <div className="grid grid-cols-3 gap-3 mb-6">
-        <div className="glass-card rounded-xl p-3 text-center">
-          <div className="text-xl font-bold text-green-600">{likelyEligible.length}</div>
-          <div className="text-xs text-muted-foreground">Likely Eligible</div>
-        </div>
-        <div className="glass-card rounded-xl p-3 text-center">
-          <div className="text-xl font-bold text-yellow-600">{borderline.length}</div>
-          <div className="text-xs text-muted-foreground">Borderline</div>
-        </div>
-        <div className="glass-card rounded-xl p-3 text-center">
-          <div className="text-xl font-bold text-muted-foreground">{notCompetitive.length}</div>
-          <div className="text-xs text-muted-foreground">Below Cut-off</div>
-        </div>
-      </div>
-
-      {courses.length === 0 ? (
-        <div className="glass-card rounded-2xl p-8 text-center">
-          <GraduationCap className="w-12 h-12 text-muted-foreground mx-auto mb-4" />
-          <h3 className="text-lg font-semibold mb-2">No Matches Found</h3>
-          <p className="text-muted-foreground text-sm mb-4">
-            We couldn't find courses matching your qualifications. Consider exploring diploma programs 
-            or certificate courses as alternative pathways.
-          </p>
-          <Button onClick={resetApp} variant="outline">
-            <RefreshCw className="w-4 h-4 mr-2" />
-            Start Over
-          </Button>
-        </div>
-      ) : (
-        <>
-          {/* Likely Eligible Courses */}
-          {likelyEligible.length > 0 && (
-            <div className="mb-8">
-              <h3 className="text-sm font-semibold mb-3 flex items-center gap-2 text-green-700">
-                <CheckCircle className="w-4 h-4" />
-                Likely Eligible ({likelyEligible.length})
-              </h3>
-              <div className="space-y-3">
-                {likelyEligible.slice(0, 10).map((match, index) => (
-                  <CourseCard
-                    key={`${match.courseId}-${index}`}
-                    match={match}
-                    isExpanded={expandedCourse === `${match.courseId}-${index}`}
-                    onToggle={() => setExpandedCourse(
-                      expandedCourse === `${match.courseId}-${index}` ? null : `${match.courseId}-${index}`
-                    )}
-                    index={index}
-                  />
-                ))}
-              </div>
-            </div>
-          )}
-
-          {/* Borderline Courses */}
-          {borderline.length > 0 && (
-            <div className="mb-8">
-              <h3 className="text-sm font-semibold mb-3 flex items-center gap-2 text-yellow-700">
-                <AlertTriangle className="w-4 h-4" />
-                Borderline ({borderline.length})
-              </h3>
-              <div className="space-y-3">
-                {borderline.slice(0, 5).map((match, index) => (
-                  <CourseCard
-                    key={`${match.courseId}-b-${index}`}
-                    match={match}
-                    isExpanded={expandedCourse === `${match.courseId}-b-${index}`}
-                    onToggle={() => setExpandedCourse(
-                      expandedCourse === `${match.courseId}-b-${index}` ? null : `${match.courseId}-b-${index}`
-                    )}
-                    index={index}
-                  />
-                ))}
-              </div>
-            </div>
-          )}
-        </>
-      )}
-
-      {/* Disclaimer */}
-      <div className="bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800 rounded-xl p-4 mb-6">
-        <div className="flex items-start gap-3">
-          <BookOpen className="w-5 h-5 text-amber-600 flex-shrink-0 mt-0.5" />
-          <div>
-            <p className="text-sm font-medium text-amber-800 dark:text-amber-200">
-              Important Disclaimer
-            </p>
-            <ul className="text-xs text-amber-700 dark:text-amber-300 mt-1 space-y-1">
-              <li>• This tool is <strong>NOT affiliated</strong> with KNEC or KUCCPS</li>
-              <li>• Results are <strong>advisory</strong> based on historical 2024 data</li>
-              <li>• Cut-off points <strong>vary yearly</strong> and are reference estimates only</li>
-              <li>• Always verify with official KUCCPS placement results</li>
-            </ul>
-          </div>
-        </div>
-      </div>
-
-      <div className="text-center">
-        <Button onClick={resetApp} variant="outline" className="w-full sm:w-auto">
-          <RefreshCw className="w-4 h-4 mr-2" />
-          Check for Another Person
-        </Button>
+  // ── Not paid ───────────────────────────────────────────────────────────
+  if (!isPaymentValid) return (
+    <div className="fade-in max-w-2xl mx-auto px-4 py-12 text-center">
+      <Lock className="w-16 h-16 text-muted-foreground mx-auto mb-4" />
+      <h2 className="text-xl font-semibold mb-2">Payment Required</h2>
+      <p className="text-muted-foreground mb-6">Complete payment to unlock your personalised course rankings.</p>
+      <div className="flex gap-3 justify-center">
+        <Button variant="outline" onClick={() => setCurrentStep(4)}><ArrowLeft className="w-4 h-4 mr-2" />Back</Button>
+        <Button onClick={() => setCurrentStep(5)}><CreditCard className="w-4 h-4 mr-2" />Go to Payment</Button>
       </div>
     </div>
   );
-}
 
-// Course Card Component
-function CourseCard({ 
-  match, 
-  isExpanded, 
-  onToggle, 
-  index 
-}: { 
-  match: CourseMatch; 
-  isExpanded: boolean; 
-  onToggle: () => void;
-  index: number;
-}) {
-  const display = getEligibilityDisplay(match.eligibilityStatus);
-  const scoreDiff = match.userClusterScore - match.cutoff2024;
-  const diffDisplay = scoreDiff >= 0 
-    ? { text: `+${scoreDiff.toFixed(1)}`, color: 'text-green-600' }
-    : { text: scoreDiff.toFixed(1), color: 'text-red-600' };
+  // ── No results ─────────────────────────────────────────────────────────
+  if (!choices.length) return (
+    <div className="fade-in max-w-2xl mx-auto px-4 py-12 text-center">
+      <BookOpen className="w-16 h-16 text-muted-foreground mx-auto mb-4" />
+      <h2 className="text-xl font-semibold mb-2">No Qualified Courses Found</h2>
+      <p className="text-muted-foreground mb-6 text-sm">Your grades may not meet minimum requirements. Check your entered grades.</p>
+      <div className="flex gap-3 justify-center">
+        <Button variant="outline" onClick={() => setCurrentStep(2)}><ArrowLeft className="w-4 h-4 mr-2" />Edit Grades</Button>
+        <Button variant="outline" onClick={resetApp}><RefreshCw className="w-4 h-4 mr-2" />Start Over</Button>
+      </div>
+    </div>
+  );
+
+  const primaryChoices = choices.filter(c => c.isTopChoice);
+  const allExtras = choices.filter(c => !c.isTopChoice);
+  const filteredExtras = searchQuery.trim()
+    ? allExtras.filter(c =>
+      c.course.courseName.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      c.course.institution.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      c.course.field.toLowerCase().includes(searchQuery.toLowerCase())
+    )
+    : allExtras;
+  const totalEligible = choices.filter(c => c.course.eligibilityStatus !== 'not_competitive').length;
 
   return (
-    <div
-      className="course-card slide-up"
-      style={{ animationDelay: `${index * 0.05}s` }}
-    >
-      <div className="flex items-start justify-between gap-3">
-        <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-2 mb-1 flex-wrap">
-            <Badge className={cn('text-xs border', display.color)}>
-              {display.label}
-            </Badge>
-            <Badge variant="outline" className="text-xs">
-              {match.clusterName}
-            </Badge>
-          </div>
-          <h3 className="font-semibold text-foreground text-sm sm:text-base truncate">
-            {match.courseName}
-          </h3>
-          <p className="text-xs text-muted-foreground flex items-center gap-1 mt-0.5">
-            <MapPin className="w-3 h-3" />
-            {match.institution}
-          </p>
+    <div className="fade-in max-w-2xl mx-auto px-4 pb-10">
+      {/* Header */}
+      <div className="text-center mb-6">
+        <div className="w-14 h-14 bg-primary/20 rounded-full flex items-center justify-center mx-auto mb-3">
+          <Star className="w-8 h-8 text-primary" />
         </div>
-        <div className="text-right flex-shrink-0">
-          <div className="flex items-center gap-1 justify-end">
-            <span className="text-lg font-bold text-primary">{match.userClusterScore.toFixed(1)}</span>
-            <span className={cn('text-xs font-medium', diffDisplay.color)}>
-              ({diffDisplay.text})
-            </span>
-          </div>
-          <p className="text-xs text-muted-foreground">
-            Cut-off: {match.cutoff2024.toFixed(1)}
-          </p>
-        </div>
-        <button
-          onClick={onToggle}
-          className="p-1.5 text-muted-foreground hover:text-foreground flex-shrink-0"
-        >
-          {isExpanded ? (
-            <ChevronUp className="w-5 h-5" />
-          ) : (
-            <ChevronDown className="w-5 h-5" />
-          )}
-        </button>
+        <h2 className="text-xl sm:text-2xl font-display font-bold">Your KUCCPS Course Choices</h2>
+        <p className="text-muted-foreground text-sm mt-1">
+          Calibrated to 2024 KUCCPS data · Closest match first · Interest-adjusted
+        </p>
       </div>
 
-      {isExpanded && (
-        <div className="mt-4 pt-4 border-t border-border slide-up">
-          {/* Cluster Subjects Used */}
+      <div className="kenya-stripe rounded-full mb-6" />
+
+      {/* Stats */}
+      <div className="grid grid-cols-3 gap-3 mb-6">
+        <div className="glass-card rounded-xl p-3 text-center">
+          <div className="text-2xl font-bold text-primary">{choices.length}</div>
+          <div className="text-xs text-muted-foreground">Courses Ranked</div>
+        </div>
+        <div className="glass-card rounded-xl p-3 text-center">
+          <div className="text-2xl font-bold text-green-700">{totalEligible}</div>
+          <div className="text-xs text-muted-foreground">Likely/Borderline</div>
+        </div>
+        <div className="glass-card rounded-xl p-3 text-center">
+          <div className="text-2xl font-bold text-blue-700">{primaryChoices.length}</div>
+          <div className="text-xs text-muted-foreground">Primary Choices</div>
+        </div>
+      </div>
+
+      {/* PRIMARY CHOICES */}
+      <div className="mb-8">
+        <div className="flex items-center gap-2 mb-4">
+          <div className="w-6 h-6 rounded-full bg-primary flex items-center justify-center">
+            <Star className="w-3.5 h-3.5 text-primary-foreground" />
+          </div>
+          <div>
+            <h3 className="font-bold text-base">Top KUCCPS Choices</h3>
+            <p className="text-xs text-muted-foreground">Slot 1a/b/c = best cluster (3 unis) · Slots 2–6 = next best clusters</p>
+          </div>
+        </div>
+
+        {/* Slot 1 */}
+        {primaryChoices.some(c => c.rank === 1) && (
           <div className="mb-4">
-            <h4 className="text-sm font-medium flex items-center gap-2 mb-2">
-              <Layers className="w-4 h-4 text-primary" />
-              Cluster Subjects Used
-            </h4>
-            <div className="flex flex-wrap gap-2">
-              {match.subjectsUsed.map((s, i) => (
-                <Badge key={i} variant="secondary" className="text-xs">
-                  {s.subject}: {s.grade} ({s.points}pts × {s.weight}w)
-                </Badge>
+            <div className="text-xs font-semibold text-primary flex items-center gap-1 mb-2 px-1">
+              <span className="w-5 h-5 rounded-full bg-primary/10 flex items-center justify-center text-[10px] font-bold">1</span>
+              Choice Group 1 — Your best cluster
+              <span className="text-muted-foreground font-normal ml-1">(a · b · c = 3 universities)</span>
+            </div>
+            <div className="space-y-3 ml-2 pl-3 border-l-2 border-primary/20">
+              {primaryChoices.filter(c => c.rank === 1).map(choice => (
+                <CourseCard key={choice.course.courseId} choice={choice}
+                  positionLabel={`1${choice.subRank}`} isTopSlot
+                  isExpanded={expandedId === choice.course.courseId}
+                  onToggle={() => setExpandedId(p => p === choice.course.courseId ? null : choice.course.courseId)}
+                />
               ))}
             </div>
           </div>
+        )}
 
-          {/* Score Breakdown */}
-          <div className="mb-4 bg-muted/50 rounded-lg p-3">
-            <h4 className="text-sm font-medium flex items-center gap-2 mb-2">
-              <Target className="w-4 h-4 text-primary" />
-              Score Comparison
-            </h4>
-            <div className="grid grid-cols-2 gap-4 text-sm">
-              <div>
-                <span className="text-muted-foreground">Your Score:</span>
-                <span className="font-bold text-primary ml-2">{match.userClusterScore.toFixed(1)}</span>
+        {[2, 3, 4, 5, 6].map(slot => {
+          const sc = primaryChoices.filter(c => c.rank === slot);
+          if (!sc.length) return null;
+          return (
+            <div key={slot} className="mt-4">
+              <div className="text-xs font-semibold text-muted-foreground flex items-center gap-1 mb-2 px-1">
+                <span className="w-5 h-5 rounded-full bg-muted flex items-center justify-center text-[10px] font-bold">{slot}</span>
+                Choice {slot} — {sc[0].course.clusterName}
               </div>
-              <div>
-                <span className="text-muted-foreground">2024 Cut-off:</span>
-                <span className="font-bold ml-2">{match.cutoff2024.toFixed(1)}</span>
-                <span className="text-xs text-muted-foreground ml-1">(Reference)</span>
-              </div>
-            </div>
-          </div>
-
-          {/* Interest Alignment */}
-          {match.interestScore > 0 && (
-            <div className="mb-4">
-              <h4 className="text-sm font-medium flex items-center gap-2 mb-1">
-                <CheckCircle className="w-4 h-4 text-success" />
-                Interest Alignment
-              </h4>
-              <p className="text-sm text-muted-foreground">
-                {match.interestScore >= 60 
-                  ? `Strong match with your interest in ${match.field}` 
-                  : match.interestScore >= 30 
-                  ? `Moderate match with your interests`
-                  : `Consider exploring if ${match.field} aligns with your goals`}
-              </p>
-            </div>
-          )}
-
-          {/* Career paths */}
-          {match.careerPaths.length > 0 && (
-            <div>
-              <h4 className="text-sm font-medium flex items-center gap-2 mb-2">
-                <Briefcase className="w-4 h-4 text-gold" />
-                Career Paths
-              </h4>
-              <div className="flex flex-wrap gap-2">
-                {match.careerPaths.map((career, i) => (
-                  <Badge key={i} variant="outline" className="text-xs">
-                    {career}
-                  </Badge>
+              <div className="space-y-3 ml-2 pl-3 border-l-2 border-border">
+                {sc.map(choice => (
+                  <CourseCard key={choice.course.courseId} choice={choice}
+                    positionLabel={String(slot)} isTopSlot={false}
+                    isExpanded={expandedId === choice.course.courseId}
+                    onToggle={() => setExpandedId(p => p === choice.course.courseId ? null : choice.course.courseId)}
+                  />
                 ))}
               </div>
             </div>
+          );
+        })}
+      </div>
+
+      {/* OTHER QUALIFIED (up to 25) */}
+      {allExtras.length > 0 && (
+        <div className="mb-8">
+          <div className="flex items-center gap-2 mb-3">
+            <div className="w-6 h-6 rounded-full bg-muted flex items-center justify-center">
+              <BookOpen className="w-3.5 h-3.5 text-muted-foreground" />
+            </div>
+            <div>
+              <h3 className="font-bold text-base">Other Qualified Programmes</h3>
+              <p className="text-xs text-muted-foreground">From all clusters · closest match first</p>
+            </div>
+            <span className="text-xs text-muted-foreground ml-auto font-semibold">{allExtras.length} courses</span>
+          </div>
+
+          {/* Search extras */}
+          <div className="relative mb-4">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+            <input
+              type="text"
+              placeholder="Search by course, university or field…"
+              value={searchQuery}
+              onChange={e => setSearchQuery(e.target.value)}
+              className="w-full pl-9 pr-4 py-2.5 text-sm border border-border rounded-xl bg-background focus:outline-none focus:ring-2 focus:ring-primary/30"
+            />
+          </div>
+
+          <div className="space-y-3">
+            {filteredExtras.map((choice, i) => (
+              <CourseCard key={choice.course.courseId} choice={choice}
+                positionLabel={String(primaryChoices.length + i + 1)} isTopSlot={false}
+                isExpanded={expandedId === choice.course.courseId}
+                onToggle={() => setExpandedId(p => p === choice.course.courseId ? null : choice.course.courseId)}
+              />
+            ))}
+          </div>
+
+          {searchQuery && filteredExtras.length === 0 && (
+            <p className="text-center text-sm text-muted-foreground py-6">No courses match your search.</p>
           )}
         </div>
       )}
+
+      {/* Disclaimer */}
+      <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 mb-6">
+        <div className="flex items-start gap-3">
+          <Info className="w-4 h-4 text-amber-600 flex-shrink-0 mt-0.5" />
+          <p className="text-xs text-amber-700">
+            Scores use <strong>C = √(r/48 × t/84) × 48 × 0.957</strong> — calibrated to match real 2024 KUCCPS data.
+            Official KUCCPS uses KNEC Performance Index. Always verify on <strong>students.kuccps.net</strong>.
+          </p>
+        </div>
+      </div>
+
+      {/* Actions */}
+      <div className="flex gap-3">
+        <Button variant="outline" onClick={resetApp} className="flex-1">
+          <RefreshCw className="w-4 h-4 mr-2" />Start Over
+        </Button>
+        <Button onClick={() => window.open('https://students.kuccps.net/', '_blank')} className="flex-1 bg-gradient-primary">
+          <GraduationCap className="w-4 h-4 mr-2" />Apply on KUCCPS
+        </Button>
+      </div>
     </div>
   );
 }

@@ -21,48 +21,48 @@ export function InterestStep() {
   const question = INTEREST_QUESTIONS[currentQuestion];
   const progress = ((currentQuestion + 1) / INTEREST_QUESTIONS.length) * 100;
 
-  const handleSelectOption = (option: typeof question.options[0]) => {
+  const handleSelectOption = (option: (typeof question.options)[0]) => {
     setInterestResponses({
       ...interestResponses,
       [question.id]: {
         answer: option.label,
-        score: option.score,
-        fields: option.fields,
+        score: 0,                  // legacy field – unused in new engine
+        fields: [],               // legacy field – unused in new engine
+        fieldScores: option.fieldScores,
       },
-    });
+    } as any);
 
-    // Auto-advance after selection
     if (currentQuestion < INTEREST_QUESTIONS.length - 1) {
-      setTimeout(() => setCurrentQuestion(currentQuestion + 1), 300);
+      setTimeout(() => setCurrentQuestion(currentQuestion + 1), 280);
     }
   };
 
+  const isQuestionAnswered = (id: string) => !!(interestResponses as any)[id];
+  const allAnswered = INTEREST_QUESTIONS.every(q => isQuestionAnswered(q.id));
+
   const handleNext = async () => {
-    // Validate all questions answered
-    const unanswered = INTEREST_QUESTIONS.filter(
-      (q) => !interestResponses[q.id]
-    );
+    const unanswered = INTEREST_QUESTIONS.filter(q => !isQuestionAnswered(q.id));
     if (unanswered.length > 0) {
-      toast.error('Please answer all questions');
+      // jump to first unanswered
+      const idx = INTEREST_QUESTIONS.findIndex(q => !isQuestionAnswered(q.id));
+      setCurrentQuestion(idx);
+      toast.error('Please answer all questions before continuing');
       return;
     }
 
     setIsLoading(true);
-
     try {
-      // Save interest responses to database
       const responses = Object.entries(interestResponses).map(([questionId, data]) => {
-        const q = INTEREST_QUESTIONS.find((q) => q.id === questionId);
+        const q = INTEREST_QUESTIONS.find(q => q.id === questionId);
         return {
           user_id: user!.id,
           question: q?.question || questionId,
-          answer: data.answer,
-          score: data.score,
+          answer: (data as any).answer ?? '',
+          score: 0,
         };
       });
 
       const { error } = await supabase.from('interest_responses').insert(responses);
-
       if (error) throw error;
 
       setCurrentStep(4);
@@ -74,11 +74,11 @@ export function InterestStep() {
     }
   };
 
-  const isQuestionAnswered = (id: string) => !!interestResponses[id];
-  const allAnswered = INTEREST_QUESTIONS.every((q) => isQuestionAnswered(q.id));
+  const currentResponse = (interestResponses as any)[question.id];
 
   return (
     <div className="fade-in max-w-lg mx-auto px-4">
+      {/* Header */}
       <div className="text-center mb-6">
         <div className="w-14 h-14 bg-gold/20 rounded-full flex items-center justify-center mx-auto mb-3">
           <Lightbulb className="w-7 h-7 text-gold" />
@@ -87,55 +87,59 @@ export function InterestStep() {
           Career Interests
         </h2>
         <p className="text-muted-foreground text-sm mt-1">
-          Help us understand your preferences
+          Your answers shape which courses rank highest for you
         </p>
       </div>
 
       {/* Progress bar */}
-      <div className="w-full bg-muted rounded-full h-2 mb-6">
+      <div className="w-full bg-muted rounded-full h-2 mb-2">
         <div
-          className="bg-primary h-2 rounded-full transition-all duration-300"
+          className="bg-primary h-2 rounded-full transition-all duration-500"
           style={{ width: `${progress}%` }}
         />
       </div>
+      <p className="text-xs text-muted-foreground text-right mb-4">
+        {currentQuestion + 1} / {INTEREST_QUESTIONS.length}
+      </p>
 
       {/* Disclaimer */}
-      <div className="bg-gold/10 border border-gold/30 rounded-lg p-3 mb-6 flex gap-2">
-        <Info className="w-5 h-5 text-gold flex-shrink-0 mt-0.5" />
-        <p className="text-xs text-gold-foreground">
-          These questions help rank courses based on your interests and do not determine eligibility.
+      <div className="bg-gold/10 border border-gold/30 rounded-lg p-3 mb-5 flex gap-2">
+        <Info className="w-4 h-4 text-gold flex-shrink-0 mt-0.5" />
+        <p className="text-xs text-foreground/70">
+          These questions fine-tune course rankings based on what you enjoy.
+          Eligibility is still based purely on your grades.
         </p>
       </div>
 
-      {/* Question */}
-      <div className="glass-card rounded-2xl p-6 mb-6">
-        <div className="flex items-center justify-between mb-4">
-          <span className="text-xs font-medium text-primary bg-primary/10 px-3 py-1 rounded-full">
-            Question {currentQuestion + 1} of {INTEREST_QUESTIONS.length}
-          </span>
-        </div>
+      {/* Question card */}
+      <div className="glass-card rounded-2xl p-5 mb-5">
+        <span className="text-xs font-semibold text-primary bg-primary/10 px-3 py-1 rounded-full">
+          Question {currentQuestion + 1} of {INTEREST_QUESTIONS.length}
+        </span>
 
-        <h3 className="text-lg font-medium mb-5">{question.question}</h3>
+        <h3 className="text-base font-semibold mt-3 mb-1 leading-snug">
+          {question.question}
+        </h3>
+        {question.helpText && (
+          <p className="text-xs text-muted-foreground mb-4">{question.helpText}</p>
+        )}
 
-        <div className="space-y-3">
-          {question.options.map((option, index) => {
-            const isSelected = interestResponses[question.id]?.answer === option.label;
-            
+        <div className="space-y-2 mt-4">
+          {question.options.map((option, idx) => {
+            const isSelected = currentResponse?.answer === option.label;
             return (
               <button
-                key={index}
+                key={idx}
                 onClick={() => handleSelectOption(option)}
                 className={cn(
-                  'w-full p-4 rounded-xl text-left transition-all duration-200 border-2',
+                  'w-full p-3 rounded-xl text-left transition-all duration-200 border-2 flex items-center gap-3',
                   isSelected
-                    ? 'border-primary bg-primary/10'
-                    : 'border-border hover:border-primary/50 hover:bg-muted/50'
+                    ? 'border-primary bg-primary/10 shadow-sm'
+                    : 'border-border hover:border-primary/40 hover:bg-muted/50'
                 )}
               >
-                <span className={cn(
-                  'font-medium',
-                  isSelected && 'text-primary'
-                )}>
+                <span className="text-xl leading-none">{option.icon}</span>
+                <span className={cn('font-medium text-sm', isSelected && 'text-primary')}>
                   {option.label}
                 </span>
               </button>
@@ -144,33 +148,38 @@ export function InterestStep() {
         </div>
       </div>
 
-      {/* Question dots */}
-      <div className="flex justify-center gap-2 mb-6">
-        {INTEREST_QUESTIONS.map((q, index) => (
+      {/* Navigation dots */}
+      <div className="flex justify-center gap-2 mb-5">
+        {INTEREST_QUESTIONS.map((q, idx) => (
           <button
             key={q.id}
-            onClick={() => setCurrentQuestion(index)}
+            onClick={() => setCurrentQuestion(idx)}
             className={cn(
-              'w-2.5 h-2.5 rounded-full transition-all',
-              index === currentQuestion
+              'h-2.5 rounded-full transition-all duration-300',
+              idx === currentQuestion
                 ? 'bg-primary w-6'
                 : isQuestionAnswered(q.id)
-                ? 'bg-success'
-                : 'bg-muted'
+                  ? 'bg-success w-2.5'
+                  : 'bg-muted w-2.5'
             )}
           />
         ))}
       </div>
 
+      {/* Unanswered questions warning */}
+      {!allAnswered && (
+        <p className="text-xs text-center text-muted-foreground mb-3">
+          Answer all {INTEREST_QUESTIONS.length} questions to continue
+        </p>
+      )}
+
+      {/* Navigation buttons */}
       <div className="flex gap-3">
         <Button
           variant="outline"
           onClick={() => {
-            if (currentQuestion > 0) {
-              setCurrentQuestion(currentQuestion - 1);
-            } else {
-              setCurrentStep(2);
-            }
+            if (currentQuestion > 0) setCurrentQuestion(currentQuestion - 1);
+            else setCurrentStep(2);
           }}
           className="flex-1"
         >
@@ -182,7 +191,7 @@ export function InterestStep() {
           disabled={!allAnswered || isLoading}
           className="flex-1 bg-gradient-primary hover:opacity-90"
         >
-          {isLoading ? 'Saving...' : 'Continue to Payment'}
+          {isLoading ? 'Saving...' : 'View Cluster Results'}
           <ArrowRight className="w-4 h-4 ml-2" />
         </Button>
       </div>

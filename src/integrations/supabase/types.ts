@@ -7,8 +7,6 @@ export type Json =
   | Json[]
 
 export type Database = {
-  // Allows to automatically instantiate createClient with right options
-  // instead of createClient<Database, { PostgrestVersion: 'XX' }>(URL, KEY)
   __InternalSupabase: {
     PostgrestVersion: "14.1"
   }
@@ -29,7 +27,7 @@ export type Database = {
           id?: string
           min_grade?: string | null
           subject: string
-          weight?: number
+          weight: number
         }
         Update: {
           category?: string
@@ -51,93 +49,82 @@ export type Database = {
       }
       clusters: {
         Row: {
+          cluster_code: string | null
+          code: string
           description: string | null
           id: string
           name: string
         }
         Insert: {
+          cluster_code?: string | null
+          code: string
           description?: string | null
-          id: string
+          id?: string
           name: string
         }
         Update: {
+          cluster_code?: string | null
+          code?: string
           description?: string | null
           id?: string
           name?: string
         }
         Relationships: []
       }
-      course_cluster_subjects: {
-        Row: {
-          course_id: string
-          id: string
-          min_grade: string | null
-          subject: string
-          weight: number
-        }
-        Insert: {
-          course_id: string
-          id?: string
-          min_grade?: string | null
-          subject: string
-          weight: number
-        }
-        Update: {
-          course_id?: string
-          id?: string
-          min_grade?: string | null
-          subject?: string
-          weight?: number
-        }
-        Relationships: [
-          {
-            foreignKeyName: "course_cluster_subjects_course_id_fkey"
-            columns: ["course_id"]
-            isOneToOne: false
-            referencedRelation: "courses"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
       courses: {
         Row: {
-          career_paths: string[] | null
-          cluster_id: string | null
-          created_at: string
+          cluster_id: string
+          cluster_weight: number | null
+          county: string | null
+          created_at: string | null
+          cutoff_2023: number | null
           cutoff_2024: number | null
+          cutoff_2025: number | null
           description: string | null
-          field: string
+          field: string | null
           id: string
-          institution: string | null
-          mean_grade_required: string
-          mean_points_required: number
+          institution: string
+          institution_type: string | null
+          mean_grade_required: string | null
+          mean_points_required: number | null
           name: string
+          programme_code: string | null
         }
         Insert: {
-          career_paths?: string[] | null
-          cluster_id?: string | null
-          created_at?: string
+          cluster_id: string
+          cluster_weight?: number | null
+          county?: string | null
+          created_at?: string | null
+          cutoff_2023?: number | null
           cutoff_2024?: number | null
+          cutoff_2025?: number | null
           description?: string | null
-          field: string
+          field?: string | null
           id?: string
-          institution?: string | null
-          mean_grade_required: string
-          mean_points_required: number
+          institution: string
+          institution_type?: string | null
+          mean_grade_required?: string | null
+          mean_points_required?: number | null
           name: string
+          programme_code?: string | null
         }
         Update: {
-          career_paths?: string[] | null
-          cluster_id?: string | null
-          created_at?: string
+          cluster_id?: string
+          cluster_weight?: number | null
+          county?: string | null
+          created_at?: string | null
+          cutoff_2023?: number | null
           cutoff_2024?: number | null
+          cutoff_2025?: number | null
           description?: string | null
-          field?: string
+          field?: string | null
           id?: string
-          institution?: string | null
-          mean_grade_required?: string
-          mean_points_required?: number
+          institution?: string
+          institution_type?: string | null
+          mean_grade_required?: string | null
+          mean_points_required?: number | null
           name?: string
+          programme_code?: string | null
         }
         Relationships: [
           {
@@ -151,40 +138,42 @@ export type Database = {
       }
       eligibility_results: {
         Row: {
+          cluster_code: string
           cluster_score: number
+          course_cutoff: number
           course_id: string
-          created_at: string
-          final_rank: string
+          course_name: string
+          created_at: string | null
           id: string
-          interest_score: number
+          status: string
+          university: string
           user_id: string
         }
         Insert: {
+          cluster_code: string
           cluster_score: number
+          course_cutoff: number
           course_id: string
-          created_at?: string
-          final_rank: string
+          course_name: string
+          created_at?: string | null
           id?: string
-          interest_score: number
+          status: string
+          university: string
           user_id: string
         }
         Update: {
+          cluster_code?: string
           cluster_score?: number
+          course_cutoff?: number
           course_id?: string
-          created_at?: string
-          final_rank?: string
+          course_name?: string
+          created_at?: string | null
           id?: string
-          interest_score?: number
+          status?: string
+          university?: string
           user_id?: string
         }
         Relationships: [
-          {
-            foreignKeyName: "eligibility_results_course_id_fkey"
-            columns: ["course_id"]
-            isOneToOne: false
-            referencedRelation: "courses"
-            referencedColumns: ["id"]
-          },
           {
             foreignKeyName: "eligibility_results_user_id_fkey"
             columns: ["user_id"]
@@ -197,7 +186,7 @@ export type Database = {
       interest_responses: {
         Row: {
           answer: string
-          created_at: string
+          created_at: string | null
           id: string
           question: string
           score: number
@@ -205,15 +194,15 @@ export type Database = {
         }
         Insert: {
           answer: string
-          created_at?: string
+          created_at?: string | null
           id?: string
           question: string
-          score?: number
+          score: number
           user_id: string
         }
         Update: {
           answer?: string
-          created_at?: string
+          created_at?: string | null
           id?: string
           question?: string
           score?: number
@@ -232,28 +221,43 @@ export type Database = {
       payments: {
         Row: {
           amount: number
-          created_at: string
+          checkout_request_id: string | null
+          created_at: string | null
           id: string
+          intasend_state: string | null
+          invoice_id: string | null
           mpesa_receipt: string | null
           phone: string
+          provider: string
+          reference: string | null
           status: string
           user_id: string
         }
         Insert: {
           amount?: number
-          created_at?: string
+          checkout_request_id?: string | null
+          created_at?: string | null
           id?: string
+          intasend_state?: string | null
+          invoice_id?: string | null
           mpesa_receipt?: string | null
           phone: string
+          provider?: string
+          reference?: string | null
           status?: string
           user_id: string
         }
         Update: {
           amount?: number
-          created_at?: string
+          checkout_request_id?: string | null
+          created_at?: string | null
           id?: string
+          intasend_state?: string | null
+          invoice_id?: string | null
           mpesa_receipt?: string | null
           phone?: string
+          provider?: string
+          reference?: string | null
           status?: string
           user_id?: string
         }
@@ -267,64 +271,35 @@ export type Database = {
           },
         ]
       }
-      universities: {
-        Row: {
-          course_id: string
-          created_at: string
-          id: string
-          location: string | null
-          name: string
-        }
-        Insert: {
-          course_id: string
-          created_at?: string
-          id?: string
-          location?: string | null
-          name: string
-        }
-        Update: {
-          course_id?: string
-          created_at?: string
-          id?: string
-          location?: string | null
-          name?: string
-        }
-        Relationships: [
-          {
-            foreignKeyName: "universities_course_id_fkey"
-            columns: ["course_id"]
-            isOneToOne: false
-            referencedRelation: "courses"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
       user_cluster_results: {
         Row: {
           cluster_id: string
           cluster_score: number
-          created_at: string
+          created_at: string | null
           eligibility_status: string
           id: string
           subjects_used: Json
+          updated_at: string
           user_id: string
         }
         Insert: {
           cluster_id: string
           cluster_score: number
-          created_at?: string
-          eligibility_status: string
+          created_at?: string | null
+          eligibility_status?: string
           id?: string
           subjects_used: Json
+          updated_at?: string
           user_id: string
         }
         Update: {
           cluster_id?: string
           cluster_score?: number
-          created_at?: string
+          created_at?: string | null
           eligibility_status?: string
           id?: string
           subjects_used?: Json
+          updated_at?: string
           user_id?: string
         }
         Relationships: [
@@ -346,7 +321,7 @@ export type Database = {
       }
       user_results: {
         Row: {
-          created_at: string
+          created_at: string | null
           grade: string
           grade_points: number
           id: string
@@ -354,7 +329,7 @@ export type Database = {
           user_id: string
         }
         Insert: {
-          created_at?: string
+          created_at?: string | null
           grade: string
           grade_points: number
           id?: string
@@ -362,7 +337,7 @@ export type Database = {
           user_id: string
         }
         Update: {
-          created_at?: string
+          created_at?: string | null
           grade?: string
           grade_points?: number
           id?: string
@@ -382,7 +357,9 @@ export type Database = {
       users: {
         Row: {
           age: number
-          created_at: string
+          auth_user_id: string | null
+          created_at: string | null
+          email: string | null
           first_name: string
           gender: string
           id: string
@@ -390,7 +367,9 @@ export type Database = {
         }
         Insert: {
           age: number
-          created_at?: string
+          auth_user_id?: string | null
+          created_at?: string | null
+          email?: string | null
           first_name: string
           gender: string
           id?: string
@@ -398,7 +377,9 @@ export type Database = {
         }
         Update: {
           age?: number
-          created_at?: string
+          auth_user_id?: string | null
+          created_at?: string | null
+          email?: string | null
           first_name?: string
           gender?: string
           id?: string
@@ -423,121 +404,103 @@ export type Database = {
 }
 
 type DatabaseWithoutInternals = Omit<Database, "__InternalSupabase">
-
 type DefaultSchema = DatabaseWithoutInternals[Extract<keyof Database, "public">]
 
 export type Tables<
   DefaultSchemaTableNameOrOptions extends
-    | keyof (DefaultSchema["Tables"] & DefaultSchema["Views"])
-    | { schema: keyof DatabaseWithoutInternals },
+  | keyof (DefaultSchema["Tables"] & DefaultSchema["Views"])
+  | { schema: keyof DatabaseWithoutInternals },
   TableName extends DefaultSchemaTableNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals
   }
-    ? keyof (DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"] &
-        DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Views"])
-    : never = never,
+  ? keyof (DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"] &
+    DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Views"])
+  : never = never,
 > = DefaultSchemaTableNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals
 }
   ? (DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"] &
-      DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Views"])[TableName] extends {
+    DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Views"])[TableName] extends {
       Row: infer R
     }
-    ? R
-    : never
+  ? R
+  : never
   : DefaultSchemaTableNameOrOptions extends keyof (DefaultSchema["Tables"] &
-        DefaultSchema["Views"])
-    ? (DefaultSchema["Tables"] &
-        DefaultSchema["Views"])[DefaultSchemaTableNameOrOptions] extends {
-        Row: infer R
-      }
-      ? R
-      : never
-    : never
+    DefaultSchema["Views"])
+  ? (DefaultSchema["Tables"] &
+    DefaultSchema["Views"])[DefaultSchemaTableNameOrOptions] extends {
+      Row: infer R
+    }
+  ? R
+  : never
+  : never
 
 export type TablesInsert<
   DefaultSchemaTableNameOrOptions extends
-    | keyof DefaultSchema["Tables"]
-    | { schema: keyof DatabaseWithoutInternals },
+  | keyof DefaultSchema["Tables"]
+  | { schema: keyof DatabaseWithoutInternals },
   TableName extends DefaultSchemaTableNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals
   }
-    ? keyof DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"]
-    : never = never,
+  ? keyof DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"]
+  : never = never,
 > = DefaultSchemaTableNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals
 }
   ? DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"][TableName] extends {
-      Insert: infer I
-    }
-    ? I
-    : never
+    Insert: infer I
+  }
+  ? I
+  : never
   : DefaultSchemaTableNameOrOptions extends keyof DefaultSchema["Tables"]
-    ? DefaultSchema["Tables"][DefaultSchemaTableNameOrOptions] extends {
-        Insert: infer I
-      }
-      ? I
-      : never
-    : never
+  ? DefaultSchema["Tables"][DefaultSchemaTableNameOrOptions] extends {
+    Insert: infer I
+  }
+  ? I
+  : never
+  : never
 
 export type TablesUpdate<
   DefaultSchemaTableNameOrOptions extends
-    | keyof DefaultSchema["Tables"]
-    | { schema: keyof DatabaseWithoutInternals },
+  | keyof DefaultSchema["Tables"]
+  | { schema: keyof DatabaseWithoutInternals },
   TableName extends DefaultSchemaTableNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals
   }
-    ? keyof DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"]
-    : never = never,
+  ? keyof DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"]
+  : never = never,
 > = DefaultSchemaTableNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals
 }
   ? DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"][TableName] extends {
-      Update: infer U
-    }
-    ? U
-    : never
+    Update: infer U
+  }
+  ? U
+  : never
   : DefaultSchemaTableNameOrOptions extends keyof DefaultSchema["Tables"]
-    ? DefaultSchema["Tables"][DefaultSchemaTableNameOrOptions] extends {
-        Update: infer U
-      }
-      ? U
-      : never
-    : never
+  ? DefaultSchema["Tables"][DefaultSchemaTableNameOrOptions] extends {
+    Update: infer U
+  }
+  ? U
+  : never
+  : never
 
 export type Enums<
   DefaultSchemaEnumNameOrOptions extends
-    | keyof DefaultSchema["Enums"]
-    | { schema: keyof DatabaseWithoutInternals },
+  | keyof DefaultSchema["Enums"]
+  | { schema: keyof DatabaseWithoutInternals },
   EnumName extends DefaultSchemaEnumNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals
   }
-    ? keyof DatabaseWithoutInternals[DefaultSchemaEnumNameOrOptions["schema"]]["Enums"]
-    : never = never,
+  ? keyof DatabaseWithoutInternals[DefaultSchemaEnumNameOrOptions["schema"]]["Enums"]
+  : never = never,
 > = DefaultSchemaEnumNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals
 }
   ? DatabaseWithoutInternals[DefaultSchemaEnumNameOrOptions["schema"]]["Enums"][EnumName]
   : DefaultSchemaEnumNameOrOptions extends keyof DefaultSchema["Enums"]
-    ? DefaultSchema["Enums"][DefaultSchemaEnumNameOrOptions]
-    : never
-
-export type CompositeTypes<
-  PublicCompositeTypeNameOrOptions extends
-    | keyof DefaultSchema["CompositeTypes"]
-    | { schema: keyof DatabaseWithoutInternals },
-  CompositeTypeName extends PublicCompositeTypeNameOrOptions extends {
-    schema: keyof DatabaseWithoutInternals
-  }
-    ? keyof DatabaseWithoutInternals[PublicCompositeTypeNameOrOptions["schema"]]["CompositeTypes"]
-    : never = never,
-> = PublicCompositeTypeNameOrOptions extends {
-  schema: keyof DatabaseWithoutInternals
-}
-  ? DatabaseWithoutInternals[PublicCompositeTypeNameOrOptions["schema"]]["CompositeTypes"][CompositeTypeName]
-  : PublicCompositeTypeNameOrOptions extends keyof DefaultSchema["CompositeTypes"]
-    ? DefaultSchema["CompositeTypes"][PublicCompositeTypeNameOrOptions]
-    : never
+  ? DefaultSchema["Enums"][DefaultSchemaEnumNameOrOptions]
+  : never
 
 export const Constants = {
   public: {

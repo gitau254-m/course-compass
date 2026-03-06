@@ -1,95 +1,79 @@
 import { useEffect, useState } from 'react';
 import { useApp } from '@/contexts/AppContext';
 import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
-import { 
-  ChevronRight,
-  CheckCircle,
-  XCircle,
-  AlertTriangle,
-  Layers,
-  BookOpen
+import {
+  Layers, CheckCircle, XCircle, AlertTriangle,
+  ChevronRight, BookOpen, GraduationCap, ArrowLeft,
 } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
-import { 
-  ClusterResult, 
-  ClusterDefinition,
-  calculateAllClusterResults,
-  getEligibilityDisplay
-} from '@/lib/clusterEngine';
+import { ClusterDefinition, ClusterResult, calculateAllClusterResults } from '@/lib/clusterEngine';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
 
+interface ClusterWithCount extends ClusterResult {
+  courseCount: number;
+}
+
 export function ClusterSummaryStep() {
   const { user, compulsorySubjects, optionalSubjects, setCurrentStep } = useApp();
-  const [clusterResults, setClusterResults] = useState<ClusterResult[]>([]);
+  const [clusterResults, setClusterResults] = useState<ClusterWithCount[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [showAllNotMet, setShowAllNotMet] = useState(false);
 
-  useEffect(() => {
-    calculateClusters();
-  }, []);
+  useEffect(() => { calculateClusters(); }, []);
 
   const calculateClusters = async () => {
     setIsLoading(true);
-    
     try {
-      // Fetch cluster definitions with requirements
-      const { data: clustersData, error: clustersError } = await supabase
+      const { data: clustersData, error } = await supabase
         .from('clusters')
-        .select(`
-          *,
-          cluster_subject_requirements(*)
-        `);
+        .select('*, cluster_subject_requirements(*)');
+      if (error) throw error;
 
-      if (clustersError) throw clustersError;
+      const { data: courseCounts } = await supabase.from('courses').select('cluster_id');
+      const countMap: Record<string, number> = {};
+      (courseCounts ?? []).forEach((c: any) => {
+        if (c.cluster_id) countMap[c.cluster_id] = (countMap[c.cluster_id] || 0) + 1;
+      });
 
-      // Format cluster data
-      const clusters: ClusterDefinition[] = (clustersData || []).map(c => ({
+      const clusters: ClusterDefinition[] = (clustersData ?? []).map((c: any) => ({
         id: c.id,
         name: c.name,
-        description: c.description,
-        requirements: (c.cluster_subject_requirements || []).map((r) => ({
+        description: c.description ?? null,
+        requirements: (c.cluster_subject_requirements ?? []).map((r: any) => ({
           cluster_id: r.cluster_id,
           subject: r.subject,
-          category: r.category as 'compulsory' | 'group1' | 'group2' | 'group3' | 'any',
-          min_grade: r.min_grade,
-          weight: Number(r.weight)
-        }))
+          category: r.category,
+          min_grade: r.min_grade ?? null,
+          weight: Number(r.weight) || 0.25,
+        })),
       }));
 
-      // Get user grades
       const allSubjects = [...compulsorySubjects, ...optionalSubjects].filter(s => s.grade);
-      
-      // Calculate all cluster results
       const results = calculateAllClusterResults(allSubjects, clusters);
-      setClusterResults(results);
 
-      // Save cluster results to database
+      setClusterResults(results.map(r => ({ ...r, courseCount: countMap[r.clusterId] || 0 })));
+
+      // Save to user_cluster_results (using `any` cast to bypass strict Json type)
       if (user?.id && results.length > 0) {
-        const resultsToSave = results.map(r => ({
+        const toSave = results.map(r => ({
           user_id: user.id,
           cluster_id: r.clusterId,
           cluster_score: r.clusterScore,
-          subjects_used: r.subjectsUsed,
-          eligibility_status: r.eligibilityStatus
+          subjects_used: r.subjectsUsed as any,
+          eligibility_status: r.eligibilityStatus,
         }));
-
-        await supabase.from('user_cluster_results').insert(resultsToSave);
+        supabase
+          .from('user_cluster_results')
+          .upsert(toSave, { onConflict: 'user_id,cluster_id' })
+          .then(() => { });
       }
-
-    } catch (error) {
-      console.error('Error calculating clusters:', error);
+    } catch (err) {
+      console.error(err);
       toast.error('Failed to calculate cluster eligibility');
     } finally {
       setIsLoading(false);
     }
-  };
-
-  const eligibleClusters = clusterResults.filter(r => r.meetsRequirements);
-  const partialClusters = clusterResults.filter(r => !r.meetsRequirements && r.clusterScore > 20);
-
-  const handleProceed = () => {
-    setCurrentStep(4); // Go to payment step
   };
 
   if (isLoading) {
@@ -99,143 +83,158 @@ export function ClusterSummaryStep() {
           <Layers className="w-10 h-10 text-primary" />
         </div>
         <h2 className="text-xl font-semibold mb-2">Calculating Cluster Eligibility</h2>
-        <p className="text-muted-foreground">Analyzing your grades across all KUCCPS clusters...</p>
+        <p className="text-muted-foreground text-sm">Analysing your grades across all 20 KUCCPS clusters…</p>
       </div>
     );
   }
 
+  const eligible = clusterResults.filter(r => r.meetsRequirements && r.clusterScore > 0);
+  const notMet = clusterResults.filter(r => !r.meetsRequirements);
+  const displayed = showAllNotMet ? notMet : notMet.slice(0, 4);
+
+  const rowStyle = (r: ClusterResult) => {
+    if (r.eligibilityStatus === 'likely_eligible')
+      return 'border-green-200 bg-green-50';
+    if (r.eligibilityStatus === 'borderline')
+      return 'border-yellow-200 bg-yellow-50';
+    return 'border-red-200 bg-red-50';
+  };
+
+  const scoreColor = (r: ClusterResult) => {
+    if (r.eligibilityStatus === 'likely_eligible') return 'text-green-700';
+    if (r.eligibilityStatus === 'borderline') return 'text-yellow-700';
+    return 'text-red-600';
+  };
+
+  const RowIcon = ({ r }: { r: ClusterResult }) => {
+    if (r.eligibilityStatus === 'likely_eligible') return <CheckCircle className="w-4 h-4 text-green-600 flex-shrink-0" />;
+    if (r.eligibilityStatus === 'borderline') return <AlertTriangle className="w-4 h-4 text-yellow-500 flex-shrink-0" />;
+    return <XCircle className="w-4 h-4 text-muted-foreground flex-shrink-0" />;
+  };
+
   return (
     <div className="fade-in max-w-2xl mx-auto px-4 pb-8">
+      {/* Header */}
       <div className="text-center mb-6">
         <div className="w-14 h-14 bg-primary/20 rounded-full flex items-center justify-center mx-auto mb-3">
           <Layers className="w-8 h-8 text-primary" />
         </div>
-        <h2 className="text-xl sm:text-2xl font-display font-bold text-foreground">
-          Your Cluster Eligibility
-        </h2>
-        <p className="text-muted-foreground text-sm mt-1">
-          Based on KUCCPS cluster calculation methodology
+        <h2 className="text-xl sm:text-2xl font-display font-bold">Your Cluster Eligibility</h2>
+        <p className="text-xs text-muted-foreground mt-1">
+          ESTIMATED scores · <code className="bg-muted px-1 rounded">C = √(r/48 × t/84) × 48</code>
         </p>
       </div>
 
-      {/* Kenya stripe decoration */}
       <div className="kenya-stripe rounded-full mb-6" />
 
-      {/* Summary Stats */}
-      <div className="grid grid-cols-2 gap-4 mb-6">
-        <div className="glass-card rounded-xl p-4 text-center">
-          <div className="text-2xl font-bold text-primary">{eligibleClusters.length}</div>
-          <div className="text-xs text-muted-foreground">Clusters Eligible</div>
+      {/* Stats */}
+      <div className="grid grid-cols-3 gap-3 mb-6">
+        <div className="glass-card rounded-xl p-3 text-center border border-green-200">
+          <div className="text-2xl font-bold text-green-700">{eligible.length}</div>
+          <div className="text-xs text-muted-foreground">Eligible Clusters</div>
         </div>
-        <div className="glass-card rounded-xl p-4 text-center">
-          <div className="text-2xl font-bold text-gold">
-            {eligibleClusters.filter(c => c.eligibilityStatus === 'likely_eligible').length}
+        <div className="glass-card rounded-xl p-3 text-center border border-red-200">
+          <div className="text-2xl font-bold text-red-600">{notMet.length}</div>
+          <div className="text-xs text-muted-foreground">Not Qualifying</div>
+        </div>
+        <div className="glass-card rounded-xl p-3 text-center">
+          <div className="text-2xl font-bold text-primary">
+            {eligible.reduce((s, r) => s + r.courseCount, 0)}
           </div>
-          <div className="text-xs text-muted-foreground">Strong Matches</div>
+          <div className="text-xs text-muted-foreground">Programmes</div>
         </div>
       </div>
 
-      {/* Eligible Clusters */}
-      {eligibleClusters.length > 0 && (
+      {/* Eligible clusters — each shows its OWN unique score */}
+      {eligible.length > 0 && (
         <div className="mb-6">
           <h3 className="text-sm font-semibold mb-3 flex items-center gap-2">
-            <CheckCircle className="w-4 h-4 text-success" />
-            Eligible Clusters ({eligibleClusters.length})
+            <CheckCircle className="w-4 h-4 text-green-600" />
+            Eligible Clusters ({eligible.length})
           </h3>
           <div className="space-y-2">
-            {eligibleClusters.slice(0, 8).map((cluster) => {
-              const display = getEligibilityDisplay(cluster.eligibilityStatus);
-              return (
-                <div
-                  key={cluster.clusterId}
-                  className="glass-card rounded-xl p-3 flex items-center justify-between"
-                >
-                  <div className="flex-1">
-                    <div className="flex items-center gap-2">
-                      <span className="font-medium text-sm">{cluster.clusterName}</span>
-                      <Badge className={cn('text-xs', display.color)}>
-                        {display.label}
-                      </Badge>
-                    </div>
-                    <p className="text-xs text-muted-foreground mt-0.5">
-                      {cluster.clusterDescription}
+            {eligible.map(cluster => (
+              <div key={cluster.clusterId}
+                className={cn('rounded-xl p-3 border flex items-center justify-between', rowStyle(cluster))}
+              >
+                <div className="flex items-center gap-2 min-w-0">
+                  <RowIcon r={cluster} />
+                  <div className="min-w-0">
+                    <p className="font-semibold text-sm truncate">{cluster.clusterName}</p>
+                    <p className="text-xs opacity-70">
+                      {cluster.courseCount > 0
+                        ? `${cluster.courseCount} programme${cluster.courseCount !== 1 ? 's' : ''}`
+                        : 'Programmes loading…'}
+                      {' · '}r={cluster.rawClusterScore}/48, t={cluster.aggregateScore}/84
                     </p>
                   </div>
-                  <div className="text-right">
-                    <div className="text-lg font-bold text-primary">
-                      {cluster.clusterScore.toFixed(1)}
-                    </div>
-                    <div className="text-xs text-muted-foreground">points</div>
-                  </div>
                 </div>
-              );
-            })}
-          </div>
-          {eligibleClusters.length > 8 && (
-            <p className="text-xs text-muted-foreground mt-2 text-center">
-              +{eligibleClusters.length - 8} more clusters
-            </p>
-          )}
-        </div>
-      )}
-
-      {/* Partial/Missing Requirements */}
-      {partialClusters.length > 0 && (
-        <div className="mb-6">
-          <h3 className="text-sm font-semibold mb-3 flex items-center gap-2">
-            <AlertTriangle className="w-4 h-4 text-yellow-500" />
-            Missing Requirements ({partialClusters.length})
-          </h3>
-          <div className="space-y-2">
-            {partialClusters.slice(0, 3).map((cluster) => (
-              <div
-                key={cluster.clusterId}
-                className="bg-muted/50 rounded-xl p-3"
-              >
-                <div className="flex items-center justify-between mb-1">
-                  <span className="font-medium text-sm">{cluster.clusterName}</span>
-                  <XCircle className="w-4 h-4 text-muted-foreground" />
+                <div className={cn('text-right flex-shrink-0 ml-3', scoreColor(cluster))}>
+                  <div className="font-bold text-lg leading-none">{cluster.clusterScore.toFixed(3)}</div>
+                  <div className="text-[10px] opacity-60">est. pts</div>
                 </div>
-                <p className="text-xs text-muted-foreground">
-                  Missing: {cluster.missingSubjects.slice(0, 2).join(', ')}
-                  {cluster.missingSubjects.length > 2 && ` (+${cluster.missingSubjects.length - 2} more)`}
-                </p>
               </div>
             ))}
           </div>
         </div>
       )}
 
-      {/* Info Box */}
-      <div className="bg-blue-50 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-800 rounded-xl p-4 mb-6">
+      {/* Not meeting requirements */}
+      {notMet.length > 0 && (
+        <div className="mb-6">
+          <h3 className="text-sm font-semibold mb-3 flex items-center gap-2">
+            <XCircle className="w-4 h-4 text-muted-foreground" />
+            Subject Requirements Not Met ({notMet.length})
+          </h3>
+          <div className="space-y-2">
+            {displayed.map(cluster => (
+              <div key={cluster.clusterId} className="bg-muted/40 rounded-xl p-3 border border-border">
+                <div className="flex items-center justify-between mb-1">
+                  <span className="font-medium text-sm text-muted-foreground">{cluster.clusterName}</span>
+                  <XCircle className="w-4 h-4 text-muted-foreground flex-shrink-0" />
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  Missing: {cluster.missingSubjects.slice(0, 2).join(', ')}
+                  {cluster.missingSubjects.length > 2 && ` +${cluster.missingSubjects.length - 2} more`}
+                </p>
+              </div>
+            ))}
+          </div>
+          {notMet.length > 4 && (
+            <button
+              onClick={() => setShowAllNotMet(v => !v)}
+              className="text-xs text-primary mt-2 underline"
+            >
+              {showAllNotMet ? 'Show less' : `Show ${notMet.length - 4} more`}
+            </button>
+          )}
+        </div>
+      )}
+
+      {/* Disclaimer */}
+      <div className="bg-blue-50 border border-blue-200 rounded-xl p-4 mb-6">
         <div className="flex items-start gap-3">
           <BookOpen className="w-5 h-5 text-blue-600 flex-shrink-0 mt-0.5" />
-          <div>
-            <p className="text-sm font-medium text-blue-800 dark:text-blue-200">
-              What's Next?
-            </p>
-            <p className="text-xs text-blue-600 dark:text-blue-300 mt-1">
-              Complete payment to see specific course matches, 2024 cut-off comparisons, 
-              and university recommendations for each eligible cluster.
-            </p>
-          </div>
+          <p className="text-xs text-blue-700">
+            <strong>ESTIMATED Scores.</strong> Official KUCCPS uses KNEC Performance Index (PI) not publicly available,
+            so your actual portal values will differ slightly. Use <code className="bg-blue-100 px-1 rounded">C = √(r/48 × t/84) × 48</code> as a guide only.
+          </p>
         </div>
       </div>
 
-      {/* Continue Button */}
-      <Button 
-        onClick={handleProceed}
-        className="w-full"
-        size="lg"
-      >
-        Continue to Payment
-        <ChevronRight className="w-4 h-4 ml-2" />
-      </Button>
+      {/* Navigation */}
+      <div className="flex gap-3">
+        <Button variant="outline" onClick={() => setCurrentStep(3)} className="flex-1">
+          <ArrowLeft className="w-4 h-4 mr-2" />Back
+        </Button>
+        <Button onClick={() => setCurrentStep(5)} className="flex-1" size="lg">
+          <GraduationCap className="w-4 h-4 mr-2" />Continue to Payment
+          <ChevronRight className="w-4 h-4 ml-2" />
+        </Button>
+      </div>
 
-      {/* Disclaimer */}
-      <p className="text-xs text-center text-muted-foreground mt-6">
-        This tool is not affiliated with KNEC or KUCCPS. Cluster calculations are based on 
-        publicly available KUCCPS methodology and are for guidance only.
+      <p className="text-xs text-center text-muted-foreground mt-4">
+        Not affiliated with KNEC or KUCCPS. For guidance only.
       </p>
     </div>
   );
