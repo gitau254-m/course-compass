@@ -381,6 +381,16 @@ export function ResultsStep() {
       </div>
 
       {/* ── Leave a Review ── */}
+      {/* ── 2024 KUCCPS Cutoff Points PDF ── */}
+      <div className="mt-6 flex items-center justify-between px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl">
+        <div className="flex items-center gap-2">
+          <BookOpen className="w-4 h-4 text-blue-600" />
+          <span className="text-sm font-semibold text-gray-700">2024 KUCCPS Official Cutoff Points</span>
+        </div>
+        <a href="https://ljojsgvbukluptjrxmjo.supabase.co/storage/v1/object/public/documents/DEGREE_CUTOFFS_14-07-2025%20(1).pdf" target="_blank" rel="noopener noreferrer" className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium bg-green-600 text-white rounded-lg hover:bg-green-700">
+          Open / Download PDF
+        </a>
+      </div>
       <ReviewForm userId={user?.id} />
     </div>
   );
