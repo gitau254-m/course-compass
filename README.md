@@ -1,73 +1,142 @@
-# Welcome to your Lovable project
+# 🎓 KCSE Course Checker
 
-## Project info
+> Helping Kenyan students discover the university and diploma courses they qualify for — based on their real KCSE grades and 2024 KUCCPS cutoff points.
 
-**URL**: https://lovable.dev/projects/REPLACE_WITH_PROJECT_ID
+🌐 **Live App:** [course-compass-one.vercel.app](https://course-compass-one.vercel.app)
 
-## How can I edit this code?
+---
 
-There are several ways of editing your application.
+## 📱 What It Does
 
-**Use Lovable**
+Every year, thousands of Kenyan Form 4 leavers struggle to know which university courses they qualify for. This tool solves that.
 
-Simply visit the [Lovable Project](https://lovable.dev/projects/REPLACE_WITH_PROJECT_ID) and start prompting.
+**Enter your KCSE grades → get your cluster scores → see every course you qualify for.**
 
-Changes made via Lovable will be committed automatically to this repo.
+### Features
+- ✅ Automatic cluster score calculation using the official KUCCPS formula
+- ✅ 393 courses — 291 degrees + 102 diplomas with exact 2024 KUCCPS cutoff points
+- ✅ Interest-based filtering — only see courses in fields you care about
+- ✅ M-Pesa STK Push payment via IntaSend (secure backend verification)
+- ✅ Google OAuth — sign in once, retrieve results anytime without re-paying
+- ✅ Diploma-only mode — automatically detected for students below C+
+- ✅ Returning user flow — retrieve previous results by name and phone
+- ✅ Installable as a PWA — works like a native app on Android and iPhone
+- ✅ 2024 KUCCPS official cutoff points PDF embedded for verification
+- ✅ WhatsApp support button for direct student assistance
 
-**Use your preferred IDE**
+---
 
-If you want to work locally using your own IDE, you can clone this repo and push changes. Pushed changes will also be reflected in Lovable.
+## 🛠️ Tech Stack
 
-The only requirement is having Node.js & npm installed - [install with nvm](https://github.com/nvm-sh/nvm#installing-and-updating)
+| Layer | Technology |
+|---|---|
+| Frontend | React 18 + TypeScript |
+| Styling | Tailwind CSS + shadcn/ui |
+| Backend / Database | Supabase (PostgreSQL + RLS) |
+| Auth | Supabase Google OAuth |
+| Payments | IntaSend M-Pesa STK Push |
+| Serverless Functions | Supabase Edge Functions (Deno) |
+| PWA | vite-plugin-pwa + Workbox |
+| Deployment | Vercel |
+| Build Tool | Vite + SWC |
 
-Follow these steps:
+---
 
-```sh
-# Step 1: Clone the repository using the project's Git URL.
-git clone <YOUR_GIT_URL>
+## 🏗️ Architecture
 
-# Step 2: Navigate to the project directory.
-cd <YOUR_PROJECT_NAME>
+```
+User enters KCSE grades
+        ↓
+Cluster engine calculates scores (calibrated to 2024 KUCCPS data)
+        ↓
+matchCoursesWithCutoffs() → ranked list of qualifying courses
+        ↓
+M-Pesa STK Push (IntaSend) → Edge Function → Supabase payments table
+        ↓
+mpesa-callback Edge Function verifies payment server-side
+        ↓
+Frontend polls DB for confirmed status → unlocks results
+```
 
-# Step 3: Install the necessary dependencies.
-npm i
+**Payment flow is fully secure** — access is only granted after the backend Edge Function confirms the transaction from IntaSend's webhook. The frontend never grants itself access.
 
-# Step 4: Start the development server with auto-reloading and an instant preview.
+---
+
+## 🗄️ Database Tables
+
+| Table | Purpose |
+|---|---|
+| `users` | Student profiles (name, gender, age, phone) |
+| `user_results` | KCSE subject grades per student |
+| `user_cluster_results` | Calculated cluster scores |
+| `payments` | M-Pesa payment records with status |
+| `courses` | 393 courses with cutoff points |
+| `degree_programme_cutoffs_exact_2024` | 703 exact 2024 KUCCPS cutoffs |
+| `reviews` | Student reviews (admin-approved before display) |
+
+---
+
+## ⚙️ Cluster Score Formula
+
+```
+C = √((r/48) × (t/84)) × 48 × 0.957
+```
+
+Where `r` = raw cluster subject score (max 48) and `t` = KCSE aggregate (max 84).
+Calibrated to match 2024 KUCCPS placement data.
+
+---
+
+## 🚀 Getting Started (Local Development)
+
+```bash
+# Clone the repo
+git clone https://github.com/gitau254-m/course-compass.git
+cd course-compass
+
+# Install dependencies
+npm install
+
+# Set up environment variables
+cp .env.example .env
+# Fill in your Supabase URL and anon key
+
+# Start dev server
 npm run dev
 ```
 
-**Edit a file directly in GitHub**
+### Environment Variables
 
-- Navigate to the desired file(s).
-- Click the "Edit" button (pencil icon) at the top right of the file view.
-- Make your changes and commit the changes.
+```env
+VITE_SUPABASE_URL=your_supabase_project_url
+VITE_SUPABASE_PUBLISHABLE_KEY=your_supabase_anon_key
+```
 
-**Use GitHub Codespaces**
+---
 
-- Navigate to the main page of your repository.
-- Click on the "Code" button (green button) near the top right.
-- Select the "Codespaces" tab.
-- Click on "New codespace" to launch a new Codespace environment.
-- Edit files directly within the Codespace and commit and push your changes once you're done.
+## 📦 Edge Functions
 
-## What technologies are used for this project?
+| Function | Purpose |
+|---|---|
+| `intasend-stk` | Initiates M-Pesa STK Push, creates payment record |
+| `mpesa-callback` | Receives IntaSend webhook, verifies and confirms payment |
+| `intasend-webhook` | Secondary webhook handler |
 
-This project is built with:
+---
 
-- Vite
-- TypeScript
-- React
-- shadcn-ui
-- Tailwind CSS
+## 👨‍💻 Author
 
-## How can I deploy this project?
+**Wallace Gitau**
+- LinkedIn: [linkedin.com/in/wallace-gitau-0054b737b](https://linkedin.com/in/wallace-gitau-0054b737b)
+- GitHub: [@gitau254-m](https://github.com/gitau254-m)
+- WhatsApp Support: [Chat with us](https://wa.me/254103837257)
 
-Simply open [Lovable](https://lovable.dev/projects/REPLACE_WITH_PROJECT_ID) and click on Share -> Publish.
+---
 
-## Can I connect a custom domain to my Lovable project?
+## 📄 License
 
-Yes, you can!
+MIT License — feel free to fork and build on this.
 
-To connect a domain, navigate to Project > Settings > Domains and click Connect Domain.
+---
 
-Read more here: [Setting up a custom domain](https://docs.lovable.dev/features/custom-domain#custom-domain)
+> Built with ❤️ for Kenyan students navigating university admissions.
