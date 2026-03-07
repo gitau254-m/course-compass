@@ -32,30 +32,11 @@ export function WelcomeStep() {
   const [retName, setRetName] = useState('');
   const [retPhone, setRetPhone] = useState('');
 
-  // PWA Install prompt — reads from global captured before React loaded
-  const [installPrompt, setInstallPrompt] = useState<any>(
-    (window as any).__pwaInstallPrompt || null
-  );
-  useEffect(() => {
-    if ((window as any).__pwaInstallPrompt) {
-      setInstallPrompt((window as any).__pwaInstallPrompt);
-    }
-    const handler = (e: any) => {
-      e.preventDefault();
-      (window as any).__pwaInstallPrompt = e;
-      setInstallPrompt(e);
-    };
-    window.addEventListener('beforeinstallprompt', handler);
-    return () => window.removeEventListener('beforeinstallprompt', handler);
-  }, []);
-  const handleInstall = () => {
-    if (!installPrompt) return;
-    installPrompt.prompt();
-    installPrompt.userChoice.then(() => {
-      setInstallPrompt(null);
-      (window as any).__pwaInstallPrompt = null;
-    });
-  };
+  // PWA install — detect platform for correct instructions
+  const isIOS = /iphone|ipad|ipod/i.test(navigator.userAgent);
+  const isAndroid = /android/i.test(navigator.userAgent);
+  const isStandalone = window.matchMedia('(display-mode: standalone)').matches;
+  const [showInstallGuide, setShowInstallGuide] = useState(false);
 
   // Reviews state
   interface Review { id: string; reviewer_name: string; rating: number; message: string; }
@@ -343,12 +324,39 @@ export function WelcomeStep() {
             Already used this before? Retrieve results
           </button>
         </div>
-        {installPrompt && (
-          <button onClick={handleInstall}
-            className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl bg-green-600 hover:bg-green-700 text-white text-sm font-semibold transition-colors">
-            <GraduationCap className="w-4 h-4" />
-            📲 Install App on Your Phone
-          </button>
+        {!isStandalone && (
+          <div className="border-t border-border pt-3">
+            <button onClick={() => setShowInstallGuide(p => !p)}
+              className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl bg-green-600 hover:bg-green-700 text-white text-sm font-semibold transition-colors">
+              <GraduationCap className="w-4 h-4" />
+              📲 Install App on Your Phone
+            </button>
+            {showInstallGuide && (
+              <div className="mt-3 bg-green-50 border border-green-200 rounded-xl p-4 text-xs text-green-800 space-y-2">
+                {isIOS ? (
+                  <>
+                    <p className="font-semibold">Install on iPhone / iPad:</p>
+                    <p>1. Tap the <strong>Share</strong> button (box with arrow) at the bottom of Safari</p>
+                    <p>2. Scroll down and tap <strong>"Add to Home Screen"</strong></p>
+                    <p>3. Tap <strong>Add</strong> — done! ✅</p>
+                  </>
+                ) : isAndroid ? (
+                  <>
+                    <p className="font-semibold">Install on Android:</p>
+                    <p>1. Tap the <strong>3-dot menu</strong> (⋮) at the top right of Chrome</p>
+                    <p>2. Tap <strong>"Add to Home screen"</strong> or <strong>"Install app"</strong></p>
+                    <p>3. Tap <strong>Install</strong> — done! ✅</p>
+                  </>
+                ) : (
+                  <>
+                    <p className="font-semibold">Install on Desktop Chrome:</p>
+                    <p>1. Look for the <strong>install icon</strong> (⊕) in the address bar</p>
+                    <p>2. Click it and select <strong>Install</strong> — done! ✅</p>
+                  </>
+                )}
+              </div>
+            )}
+          </div>
         )}
       </div>
       <div className="flex items-center justify-center gap-2 mt-4 text-xs text-muted-foreground">
