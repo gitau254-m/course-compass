@@ -95,16 +95,22 @@ function CourseCard({ course, index, isExpanded, onToggle, isDiploma }: {
 }
 
 export function ResultsStep() {
-  const { user, compulsorySubjects, optionalSubjects, interestResponses, resetApp, payment, setCurrentStep } = useApp();
+  const { user, compulsorySubjects, optionalSubjects, interestResponses, resetApp, payment, setCurrentStep, isDiplomaOnly } = useApp(); // ADDED isDiplomaOnly
   const [degreeMatches, setDegreeMatches] = useState<CourseMatch[]>([]);
   const [diplomaMatches, setDiplomaMatches] = useState<CourseMatch[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isPaymentValid, setIsPaymentValid] = useState(false);
   const [expandedId, setExpandedId] = useState<string | null>(null);
-  const [filter, setFilter] = useState<ProgrammeFilter>('both');
+  // ADDED: if isDiplomaOnly, lock to 'diploma' from the start
+  const [filter, setFilter] = useState<ProgrammeFilter>(isDiplomaOnly ? 'diploma' : 'both');
   const [searchQuery, setSearchQuery] = useState('');
 
   useEffect(() => { verifyAndLoad(); }, []);
+
+  // ADDED: keep filter in sync if isDiplomaOnly is set after mount
+  useEffect(() => {
+    if (isDiplomaOnly) setFilter('diploma');
+  }, [isDiplomaOnly]);
 
   const verifyAndLoad = async () => {
     if (DEV_MODE) { setIsPaymentValid(true); await calculateEligibility(); return; }
@@ -141,7 +147,8 @@ export function ResultsStep() {
       const degreeCourses = (coursesData as any[]).filter(c => c.programme_level !== 'diploma');
       const diplomaCourses = (coursesData as any[]).filter(c => c.programme_level === 'diploma');
 
-      setDegreeMatches(matchCoursesWithCutoffs(clusterResults, degreeCourses, fieldScores));
+      // ADDED: if diploma-only, set 0 degrees
+      setDegreeMatches(isDiplomaOnly ? [] : matchCoursesWithCutoffs(clusterResults, degreeCourses, fieldScores));
       setDiplomaMatches(matchCoursesWithCutoffs(clusterResults, diplomaCourses, fieldScores));
     } catch (err) {
       console.error(err);
@@ -210,13 +217,28 @@ export function ResultsStep() {
         <p className="text-muted-foreground text-sm mt-1">Degrees & Diplomas · 2024 calibrated data · Closest match first</p>
       </div>
       <div className="kenya-stripe rounded-full mb-6" />
+
+      {/* ADDED: Diploma-only orange banner at top of results */}
+      {isDiplomaOnly && (
+        <div className="mb-6 bg-orange-50 border border-orange-300 rounded-xl p-4 flex items-start gap-3">
+          <AlertTriangle className="w-5 h-5 text-orange-600 shrink-0 mt-0.5" />
+          <div>
+            <p className="font-semibold text-orange-800 text-sm">Diploma Programmes Only</p>
+            <p className="text-xs text-orange-700 mt-1">
+              Your aggregate is below <strong>C+</strong>. Degree programmes are not shown.
+              Below are diploma and certificate courses you qualify for.
+            </p>
+          </div>
+        </div>
+      )}
+
       <div className="grid grid-cols-3 gap-3 mb-5">
         <div className="glass-card rounded-xl p-3 text-center"><div className="text-2xl font-bold text-primary">{degreeMatches.length + diplomaMatches.length}</div><div className="text-xs text-muted-foreground">Courses Ranked</div></div>
         <div className="glass-card rounded-xl p-3 text-center"><div className="text-2xl font-bold text-green-700">{totalQualified}</div><div className="text-xs text-muted-foreground">You Qualify For</div></div>
         <div className="glass-card rounded-xl p-3 text-center"><div className="text-2xl font-bold text-blue-700">{qualifiedDiplomas.length}</div><div className="text-xs text-muted-foreground">Diploma Options</div></div>
       </div>
 
-      {/* Programme Level Toggle */}
+      {/* Programme Level Toggle — ADDED: disable degree/both buttons when isDiplomaOnly */}
       <div className="glass-card rounded-2xl p-4 mb-6">
         <p className="text-xs font-semibold text-muted-foreground mb-3 text-center">Show me:</p>
         <div className="grid grid-cols-3 gap-2">
@@ -225,9 +247,13 @@ export function ResultsStep() {
             { key: 'degree' as ProgrammeFilter, label: 'Degrees Only', icon: <GraduationCap className="w-4 h-4" /> },
             { key: 'diploma' as ProgrammeFilter, label: 'Diplomas Only', icon: <Award className="w-4 h-4" /> },
           ]).map(opt => (
-            <button key={opt.key} onClick={() => setFilter(opt.key)}
+            <button key={opt.key}
+              // ADDED: if isDiplomaOnly, lock to diploma — disable the other two
+              onClick={() => { if (!isDiplomaOnly || opt.key === 'diploma') setFilter(opt.key); }}
+              disabled={isDiplomaOnly && opt.key !== 'diploma'}
               className={cn('flex flex-col items-center gap-1 rounded-xl p-3 text-xs font-medium border transition-all',
-                filter === opt.key ? 'bg-primary text-primary-foreground border-primary shadow' : 'bg-background text-muted-foreground border-border hover:border-primary/50')}>
+                filter === opt.key ? 'bg-primary text-primary-foreground border-primary shadow' : 'bg-background text-muted-foreground border-border hover:border-primary/50',
+                isDiplomaOnly && opt.key !== 'diploma' ? 'opacity-40 cursor-not-allowed' : '')}>
               {opt.icon}<span className="text-center leading-tight">{opt.label}</span>
             </button>
           ))}
@@ -352,6 +378,87 @@ export function ResultsStep() {
       <div className="flex gap-3">
         <Button variant="outline" onClick={resetApp} className="flex-1"><RefreshCw className="w-4 h-4 mr-2" />Start Over</Button>
         <Button onClick={() => window.open('https://students.kuccps.net/', '_blank')} className="flex-1 bg-gradient-primary"><GraduationCap className="w-4 h-4 mr-2" />Apply on KUCCPS</Button>
+      </div>
+
+      {/* ── Leave a Review ── */}
+      <ReviewForm userId={user?.id} />
+    </div>
+  );
+}
+
+// ── Review submission form ────────────────────────────────────────────────────
+function ReviewForm({ userId }: { userId?: string }) {
+  const [name, setName] = useState('');
+  const [message, setMessage] = useState('');
+  const [rating, setRating] = useState(0);
+  const [hovered, setHovered] = useState(0);
+  const [submitted, setSubmitted] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
+
+  const handleSubmit = async () => {
+    if (!name.trim() || !message.trim() || rating === 0) {
+      toast.error('Please fill in your name, a message, and select a star rating.');
+      return;
+    }
+    setIsLoading(true);
+    try {
+      const { error } = await supabase.from('reviews').insert({
+        reviewer_name: name.trim(),
+        message: message.trim(),
+        rating,
+        user_id: userId ?? null,
+        approved: false, // admin must approve before it shows on Welcome
+      });
+      if (error) throw error;
+      setSubmitted(true);
+    } catch (err) {
+      console.error(err);
+      toast.error('Could not save review. Please try again.');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  if (submitted) return (
+    <div className="mt-8 bg-green-50 border border-green-200 rounded-2xl p-5 text-center">
+      <div className="flex gap-0.5 justify-center mb-2">
+        {[1, 2, 3, 4, 5].map(i => <Star key={i} className="w-4 h-4 fill-yellow-400 text-yellow-400" />)}
+      </div>
+      <p className="font-semibold text-green-800 text-sm">Thank you for your review!</p>
+      <p className="text-xs text-green-700 mt-1">It will appear on the home page once approved.</p>
+    </div>
+  );
+
+  return (
+    <div className="mt-8 glass-card rounded-2xl p-5">
+      <h3 className="font-semibold text-sm mb-1">Rate Your Experience</h3>
+      <p className="text-xs text-muted-foreground mb-4">Help other students by leaving a quick review.</p>
+
+      {/* Star picker */}
+      <div className="flex gap-1 mb-4">
+        {[1, 2, 3, 4, 5].map(i => (
+          <button key={i} type="button"
+            onMouseEnter={() => setHovered(i)}
+            onMouseLeave={() => setHovered(0)}
+            onClick={() => setRating(i)}
+            className="p-0.5 focus:outline-none">
+            <Star className={`w-7 h-7 transition-colors ${(hovered || rating) >= i ? 'fill-yellow-400 text-yellow-400' : 'text-muted-foreground'}`} />
+          </button>
+        ))}
+        {rating > 0 && <span className="text-xs text-muted-foreground self-center ml-1">{rating}/5</span>}
+      </div>
+
+      <div className="space-y-3">
+        <input type="text" placeholder="Your name" value={name}
+          onChange={e => setName(e.target.value)} maxLength={40}
+          className="w-full border border-border rounded-xl px-3 py-2.5 text-sm bg-background focus:outline-none focus:ring-2 focus:ring-primary/30" />
+        <textarea placeholder="Share your experience in a few words..." value={message}
+          onChange={e => setMessage(e.target.value)} rows={3} maxLength={200}
+          className="w-full border border-border rounded-xl px-3 py-2.5 text-sm bg-background focus:outline-none focus:ring-2 focus:ring-primary/30 resize-none" />
+        <Button onClick={handleSubmit} disabled={isLoading || !name || !message || rating === 0}
+          className="w-full" variant="outline">
+          {isLoading ? 'Submitting…' : 'Submit Review'}
+        </Button>
       </div>
     </div>
   );

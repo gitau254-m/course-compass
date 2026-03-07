@@ -22,6 +22,9 @@ interface AppContextType {
   setEligibilityResults: (results: EligibilityResult[]) => void;
   isReturningUser: boolean;
   setIsReturningUser: (value: boolean) => void;
+  // ── ADDED: diploma-only flag when aggregate < C+ (46/84) ──
+  isDiplomaOnly: boolean;
+  setIsDiplomaOnly: (value: boolean) => void;
   resetApp: () => void;
 }
 
@@ -43,6 +46,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [payment, setPayment] = useState<Payment | null>(null);
   const [eligibilityResults, setEligibilityResults] = useState<EligibilityResult[]>([]);
   const [isReturningUser, setIsReturningUser] = useState(false);
+  // ADDED
+  const [isDiplomaOnly, setIsDiplomaOnly] = useState(false);
 
   useEffect(() => {
     try {
@@ -56,6 +61,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       if (data.interestResponses) setInterestResponses(data.interestResponses);
       if (data.payment) setPayment(data.payment);
       if (data.eligibilityResults) setEligibilityResults(data.eligibilityResults);
+      if (data.isDiplomaOnly !== undefined) setIsDiplomaOnly(data.isDiplomaOnly); // ADDED
     } catch { /* ignore */ }
   }, []);
 
@@ -64,9 +70,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
       localStorage.setItem(STORAGE_KEY, JSON.stringify({
         user, currentStep, compulsorySubjects,
         optionalSubjects, interestResponses, payment, eligibilityResults,
+        isDiplomaOnly, // ADDED
       }));
     } catch { /* ignore */ }
-  }, [user, currentStep, compulsorySubjects, optionalSubjects, interestResponses, payment, eligibilityResults]);
+  }, [user, currentStep, compulsorySubjects, optionalSubjects, interestResponses, payment, eligibilityResults, isDiplomaOnly]);
 
   const resetApp = () => {
     setCurrentStep(1);
@@ -77,6 +84,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setPayment(null);
     setEligibilityResults([]);
     setIsReturningUser(false);
+    setIsDiplomaOnly(false); // ADDED
     localStorage.removeItem(STORAGE_KEY);
     try { sessionStorage.removeItem('pending_auth_id'); sessionStorage.removeItem('pending_email'); } catch { /* ignore */ }
   };
@@ -91,6 +99,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       payment, setPayment,
       eligibilityResults, setEligibilityResults,
       isReturningUser, setIsReturningUser,
+      isDiplomaOnly, setIsDiplomaOnly, // ADDED
       resetApp,
     }}>
       {children}

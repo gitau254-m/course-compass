@@ -15,7 +15,7 @@ interface ClusterWithCount extends ClusterResult {
 }
 
 export function ClusterSummaryStep() {
-  const { user, compulsorySubjects, optionalSubjects, setCurrentStep } = useApp();
+  const { user, compulsorySubjects, optionalSubjects, setCurrentStep, isDiplomaOnly } = useApp(); // ADDED isDiplomaOnly
   const [clusterResults, setClusterResults] = useState<ClusterWithCount[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [showAllNotMet, setShowAllNotMet] = useState(false);
@@ -126,6 +126,21 @@ export function ClusterSummaryStep() {
       </div>
 
       <div className="kenya-stripe rounded-full mb-6" />
+
+      {/* ADDED: Diploma-only orange banner */}
+      {isDiplomaOnly && (
+        <div className="mb-6 bg-orange-50 border border-orange-300 rounded-xl p-4 flex items-start gap-3">
+          <AlertTriangle className="w-5 h-5 text-orange-600 shrink-0 mt-0.5" />
+          <div>
+            <p className="font-semibold text-orange-800 text-sm">Diploma Programmes Only</p>
+            <p className="text-xs text-orange-700 mt-1">
+              Your mean grade is below <strong>C+</strong>. Only clusters available for
+              <strong> Diploma & Certificate</strong> programmes are shown below.
+              Degree courses will show 0 on the results page.
+            </p>
+          </div>
+        </div>
+      )}
 
       {/* Stats */}
       <div className="grid grid-cols-3 gap-3 mb-6">

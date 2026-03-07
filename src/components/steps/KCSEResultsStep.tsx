@@ -12,7 +12,7 @@ import { useApp } from '@/contexts/AppContext';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { ArrowRight, ArrowLeft, Plus, X, BookOpen, Info } from 'lucide-react';
+import { ArrowRight, ArrowLeft, Plus, X, BookOpen, Info, AlertTriangle } from 'lucide-react'; // ADDED AlertTriangle
 import { GRADES, GRADE_POINTS, OPTIONAL_SUBJECTS } from '@/lib/constants';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
@@ -51,6 +51,7 @@ export function KCSEResultsStep() {
     setCompulsorySubjects,
     optionalSubjects,
     setOptionalSubjects,
+    setIsDiplomaOnly, // ADDED
   } = useApp();
 
   const [isLoading, setIsLoading] = useState(false);
@@ -132,6 +133,9 @@ export function KCSEResultsStep() {
 
   const agg = calculateAggregate();
 
+  // ADDED: C+ boundary is aggregate >= 46 out of 84. Below that = diploma only.
+  const isBelowCPlus = agg.total > 0 && agg.total < 46;
+
   // ── Save and go to next step ──────────────────────────────
   const handleNext = async () => {
     if (!user?.id) {
@@ -177,6 +181,8 @@ export function KCSEResultsStep() {
 
       const { error } = await supabase.from('user_results').insert(allResults);
       if (error) throw error;
+
+      setIsDiplomaOnly(isBelowCPlus); // ADDED: persist diploma-only flag before moving on
 
       toast.success('Grades saved!');
       setCurrentStep(3);
@@ -328,6 +334,21 @@ export function KCSEResultsStep() {
             <span className="bg-background/60 rounded px-1 py-0.5">A-: 74–80</span>
             <span className="bg-background/60 rounded px-1 py-0.5">B+: 67–73</span>
             <span className="bg-background/60 rounded px-1 py-0.5">B: 60–66</span>
+          </div>
+        )}
+
+        {/* ADDED: Diploma-only warning — only appears when aggregate < 46 (below C+) */}
+        {isBelowCPlus && (
+          <div className="mt-4 flex items-start gap-2 bg-orange-100 border border-orange-300 rounded-xl px-3 py-3">
+            <AlertTriangle className="w-4 h-4 text-orange-600 shrink-0 mt-0.5" />
+            <div className="text-xs text-orange-700">
+              <p className="font-semibold">Diploma Programmes Only</p>
+              <p className="mt-0.5">
+                Your aggregate of <strong>{agg.total}/84 ({agg.grade})</strong> is below the
+                minimum <strong>C+ (46 points)</strong> required for university degree admission.
+                You will see <strong>diploma results only</strong>.
+              </p>
+            </div>
           </div>
         )}
       </div>

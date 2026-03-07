@@ -8,7 +8,7 @@
 // Change this ONE line when going live:
 // ============================================================
 
-export const DEV_MODE = true; // ← true = test mode | false = live payments
+export const DEV_MODE = false; // ← true = test mode | false = live payments
 
 export const PAYMENT_AMOUNT = 99; // KES
 

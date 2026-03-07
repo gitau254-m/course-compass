@@ -4,7 +4,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
-import { GraduationCap, ArrowRight, UserCheck, Loader2, ShieldCheck } from 'lucide-react';
+import { GraduationCap, ArrowRight, UserCheck, Loader2, ShieldCheck, Star } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { GRADE_POINTS } from '@/lib/clusterEngine';
@@ -31,6 +31,15 @@ export function WelcomeStep() {
   // Returning-user lookup fields
   const [retName, setRetName] = useState('');
   const [retPhone, setRetPhone] = useState('');
+
+  // Reviews state
+  interface Review { id: string; reviewer_name: string; rating: number; message: string; }
+  const [reviews, setReviews] = useState<Review[]>([]);
+  useEffect(() => {
+    supabase.from('reviews').select('id,reviewer_name,rating,message')
+      .eq('approved', true).eq('rating', 5).limit(3)
+      .then(({ data }) => { if (data) setReviews(data); });
+  }, []);
 
   // ── Listen for Google OAuth redirect result ────────────────────────────────
   useEffect(() => {
@@ -317,6 +326,28 @@ export function WelcomeStep() {
       <p className="text-xs text-center text-muted-foreground mt-3">
         Not affiliated with KNEC or KUCCPS. Guidance tool only.
       </p>
+
+      {/* Reviews section */}
+      {reviews.length > 0 && (
+        <div className="mt-6">
+          <p className="text-xs font-semibold text-center text-muted-foreground mb-3 uppercase tracking-wide">What Students Say</p>
+          <div className="space-y-3">
+            {reviews.map(r => (
+              <div key={r.id} className="glass-card rounded-xl p-4">
+                <div className="flex items-center gap-2 mb-1.5">
+                  <span className="text-sm font-semibold">{r.reviewer_name}</span>
+                  <div className="flex gap-0.5 ml-auto">
+                    {[1, 2, 3, 4, 5].map(i => (
+                      <Star key={i} className="w-3.5 h-3.5 fill-yellow-400 text-yellow-400" />
+                    ))}
+                  </div>
+                </div>
+                <p className="text-xs text-muted-foreground leading-relaxed">"{r.message}"</p>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   );
 
