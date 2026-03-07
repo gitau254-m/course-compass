@@ -32,17 +32,29 @@ export function WelcomeStep() {
   const [retName, setRetName] = useState('');
   const [retPhone, setRetPhone] = useState('');
 
-  // PWA Install prompt
-  const [installPrompt, setInstallPrompt] = useState<any>(null);
+  // PWA Install prompt — reads from global captured before React loaded
+  const [installPrompt, setInstallPrompt] = useState<any>(
+    (window as any).__pwaInstallPrompt || null
+  );
   useEffect(() => {
-    const handler = (e: any) => { e.preventDefault(); setInstallPrompt(e); };
+    if ((window as any).__pwaInstallPrompt) {
+      setInstallPrompt((window as any).__pwaInstallPrompt);
+    }
+    const handler = (e: any) => {
+      e.preventDefault();
+      (window as any).__pwaInstallPrompt = e;
+      setInstallPrompt(e);
+    };
     window.addEventListener('beforeinstallprompt', handler);
     return () => window.removeEventListener('beforeinstallprompt', handler);
   }, []);
   const handleInstall = () => {
     if (!installPrompt) return;
     installPrompt.prompt();
-    installPrompt.userChoice.then(() => setInstallPrompt(null));
+    installPrompt.userChoice.then(() => {
+      setInstallPrompt(null);
+      (window as any).__pwaInstallPrompt = null;
+    });
   };
 
   // Reviews state
