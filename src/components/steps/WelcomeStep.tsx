@@ -32,6 +32,19 @@ export function WelcomeStep() {
   const [retName, setRetName] = useState('');
   const [retPhone, setRetPhone] = useState('');
 
+  // PWA Install prompt
+  const [installPrompt, setInstallPrompt] = useState<any>(null);
+  useEffect(() => {
+    const handler = (e: any) => { e.preventDefault(); setInstallPrompt(e); };
+    window.addEventListener('beforeinstallprompt', handler);
+    return () => window.removeEventListener('beforeinstallprompt', handler);
+  }, []);
+  const handleInstall = () => {
+    if (!installPrompt) return;
+    installPrompt.prompt();
+    installPrompt.userChoice.then(() => setInstallPrompt(null));
+  };
+
   // Reviews state
   interface Review { id: string; reviewer_name: string; rating: number; message: string; }
   const [reviews, setReviews] = useState<Review[]>([]);
@@ -318,6 +331,13 @@ export function WelcomeStep() {
             Already used this before? Retrieve results
           </button>
         </div>
+        {installPrompt && (
+          <button onClick={handleInstall}
+            className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl bg-green-600 hover:bg-green-700 text-white text-sm font-semibold transition-colors">
+            <GraduationCap className="w-4 h-4" />
+            📲 Install App on Your Phone
+          </button>
+        )}
       </div>
       <div className="flex items-center justify-center gap-2 mt-4 text-xs text-muted-foreground">
         <ShieldCheck className="w-4 h-4 text-green-600" />
