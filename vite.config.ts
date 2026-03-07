@@ -22,7 +22,9 @@ export default defineConfig(({ mode }) => ({
         "og-image.png",
         "pwa-192x192.png",
         "pwa-512x512.png",
-        "maskable-icon-512x512.png"
+        "maskable-icon-512x512.png",
+        "screenshot1.jpeg",
+        "screenshot2.jpeg"
       ],
       manifest: {
         id: "/",
@@ -55,10 +57,26 @@ export default defineConfig(({ mode }) => ({
             type: "image/png",
             purpose: "maskable"
           }
+        ],
+        screenshots: [
+          {
+            src: "screenshot1.jpeg",
+            sizes: "390x844",
+            type: "image/jpeg",
+            form_factor: "narrow",
+            label: "Welcome Screen"
+          },
+          {
+            src: "screenshot2.jpeg",
+            sizes: "390x844",
+            type: "image/jpeg",
+            form_factor: "narrow",
+            label: "Results Screen"
+          }
         ]
       },
       workbox: {
-        globPatterns: ["**/*.{js,css,html,ico,png,svg,woff,woff2}"],
+        globPatterns: ["**/*.{js,css,html,ico,png,svg,jpg,jpeg,woff,woff2}"],
         runtimeCaching: [
           {
             urlPattern: /^https:\/\/.*\.supabase\.co\/.*$/i,
