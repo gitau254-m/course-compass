@@ -10,42 +10,77 @@
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
 
-  <!-- App Title & Description -->
-  <title>Kenyan Student Course Checker</title>
+  <!-- App Title & Description — optimized for Google -->
+  <title>KCSE Course Checker Kenya 2024 | Find University Courses You Qualify For</title>
   <meta name="description"
-    content="Check your university course eligibility based on KCSE results. Find the best courses that match your grades and interests." />
-  <meta name="author" content="Course Checker Kenya" />
+    content="Free KCSE course checker for Kenyan students. Calculate your cluster scores and instantly find every university degree and diploma course you qualify for based on 2024 KUCCPS cutoff points. Supports M-Pesa payment." />
+  <meta name="author" content="Wallace Gitau" />
   <meta name="keywords"
-    content="KCSE, university, course eligibility, Kenya, KUCCPS, university courses, career guidance" />
+    content="KCSE course checker, KUCCPS 2024 cutoff points, cluster score calculator Kenya, university courses Kenya, KCSE eligibility checker, KUCCPS placement Kenya, KCSE cluster score, university admission Kenya, diploma courses Kenya, degree courses KUCCPS, check KCSE courses, KUCCPS 2024, form four courses Kenya" />
+
+  <!-- Canonical URL -->
+  <link rel="canonical" href="https://course-compass-guide.vercel.app/" />
+
+  <!-- Geo targeting Kenya -->
+  <meta name="geo.region" content="KE" />
+  <meta name="geo.country" content="Kenya" />
+  <meta name="language" content="English" />
 
   <!-- Theme & PWA -->
   <meta name="theme-color" content="#006600" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
-  <meta name="apple-mobile-web-app-title" content="Course Checker" />
+  <meta name="apple-mobile-web-app-title" content="KCSE Course Checker" />
 
   <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
   <link rel="manifest" href="/manifest.webmanifest" />
 
-  <!-- Open Graph -->
-  <meta property="og:title" content="Kenyan Student Course Checker" />
-  <meta property="og:description" content="Check your university course eligibility based on KCSE results" />
+  <!-- Open Graph (WhatsApp, Facebook previews) -->
+  <meta property="og:title" content="KCSE Course Checker Kenya 2024 | Find University Courses You Qualify For" />
+  <meta property="og:description"
+    content="Calculate your KCSE cluster scores and find every university and diploma course you qualify for. Based on 2024 KUCCPS cutoff points. Pay via M-Pesa." />
   <meta property="og:type" content="website" />
-  <meta property="og:image" content="/og-image.png" />
+  <meta property="og:url" content="https://course-compass-guide.vercel.app/" />
+  <meta property="og:image" content="https://course-compass-guide.vercel.app/og-image.png" />
+  <meta property="og:image:width" content="1200" />
+  <meta property="og:image:height" content="630" />
   <meta property="og:locale" content="en_KE" />
+  <meta property="og:site_name" content="KCSE Course Checker Kenya" />
 
   <!-- Twitter -->
   <meta name="twitter:card" content="summary_large_image" />
-  <meta name="twitter:title" content="Kenyan Student Course Checker" />
-  <meta name="twitter:description" content="Check your university course eligibility based on KCSE results" />
-  <meta name="twitter:image" content="/og-image.png" />
+  <meta name="twitter:title" content="KCSE Course Checker Kenya 2024" />
+  <meta name="twitter:description"
+    content="Find every university course you qualify for based on your KCSE grades and 2024 KUCCPS cutoff points." />
+  <meta name="twitter:image" content="https://course-compass-guide.vercel.app/og-image.png" />
 
-  <!-- Fonts -->
-  <link rel="preconnect" href="https://fonts.googleapis.com" />
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-  <link
-    href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Poppins:wght@600;700;800&display=swap"
-    rel="stylesheet" />
+  <!-- Structured Data — helps Google understand what this app is -->
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "WebApplication",
+    "name": "KCSE Course Checker Kenya",
+    "url": "https://course-compass-guide.vercel.app/",
+    "description": "Free tool for Kenyan KCSE students to calculate cluster scores and find university and diploma courses they qualify for based on 2024 KUCCPS cutoff points.",
+    "applicationCategory": "EducationalApplication",
+    "operatingSystem": "Any",
+    "offers": {
+      "@type": "Offer",
+      "price": "99",
+      "priceCurrency": "KES"
+    },
+    "author": {
+      "@type": "Person",
+      "name": "Wallace Gitau"
+    },
+    "keywords": "KCSE, KUCCPS, course checker, Kenya, university admission, cluster score",
+    "inLanguage": "en-KE",
+    "audience": {
+      "@type": "Audience",
+      "audienceType": "Kenyan KCSE students"
+    }
+  }
+  </script>
 
   <!-- PWA install prompt capture — must be here before React loads -->
   <script>
@@ -55,6 +90,13 @@
       window.__pwaInstallPrompt = e;
     });
   </script>
+
+  <!-- Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link
+    href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Poppins:wght@600;700;800&display=swap"
+    rel="stylesheet" />
 </head>
 
 <body>
