@@ -36,7 +36,9 @@ export default defineConfig(({ mode }) => ({
         display: "standalone",
         orientation: "portrait",
         scope: "/",
-        start_url: "/",
+        // ✅ Changed to /app so PWA opens directly into the checker
+        // (not the landing page) when launched from home screen
+        start_url: "/app",
         categories: ["education", "productivity"],
         icons: [
           {

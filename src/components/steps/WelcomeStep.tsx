@@ -102,7 +102,7 @@ export function WelcomeStep() {
     setIsLoading(true);
     const { error } = await supabase.auth.signInWithOAuth({
       provider: 'google',
-      options: { redirectTo: window.location.origin },
+      options: { redirectTo: window.location.origin + '/app' },
     });
     if (error) {
       toast.error('Google sign-in failed. Use manual entry below.');
