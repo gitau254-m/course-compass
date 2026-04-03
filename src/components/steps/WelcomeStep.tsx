@@ -50,7 +50,7 @@ export function WelcomeStep() {
   // ── Listen for Google OAuth redirect result ────────────────────────────────
   useEffect(() => {
     const { data: listener } = supabase.auth.onAuthStateChange(async (event, session) => {
-      if (event === 'SIGNED_IN' && session?.user) {
+      if ((event === 'SIGNED_IN' || event === 'INITIAL_SESSION') && session?.user) {
         await handlePostAuth(session.user as any);
       }
     });

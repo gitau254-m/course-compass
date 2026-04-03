@@ -221,14 +221,29 @@ const App = () => {
 
   useEffect(() => {
     if (isStandalone) return; // already installed — don't show anything
+
+    // CRITICAL: index.html captures beforeinstallprompt BEFORE React loads.
+    // By the time this useEffect runs, the event is already gone.
+    // Read it from window.__pwaInstallPrompt which index.html set.
+    const alreadyCaptured = (window as any).__pwaInstallPrompt;
+    if (alreadyCaptured) {
+      installPromptRef.current = alreadyCaptured;
+      setCanInstall(true);
+    }
+
+    // Also listen for future firings (rare but possible on navigation)
     const handler = (e: Event) => {
       e.preventDefault();
       installPromptRef.current = e;
+      (window as any).__pwaInstallPrompt = e;
       setCanInstall(true);
     };
     window.addEventListener('beforeinstallprompt', handler as EventListener);
-    // Also listen for successful install — hide button after install
-    window.addEventListener('appinstalled', () => setCanInstall(false));
+    window.addEventListener('appinstalled', () => {
+      setCanInstall(false);
+      installPromptRef.current = null;
+      (window as any).__pwaInstallPrompt = null;
+    });
     return () => {
       window.removeEventListener('beforeinstallprompt', handler as EventListener);
     };
