@@ -1,9 +1,6 @@
 // ============================================================
-// FILE: src/components/steps/PaymentStep.tsx  <- REPLACE
-// ============================================================
-// Uses IntaSend for STK push instead of Daraja/M-Pesa direct.
-// DEV_MODE = true  -> skips payment, goes straight to results
-// DEV_MODE = false -> triggers real IntaSend STK push
+// FILE: src/components/steps/PaymentStep.tsx
+// Amount: KES 139
 // ============================================================
 
 import { useState, useEffect } from 'react';
@@ -24,7 +21,7 @@ export function PaymentStep() {
   const [status, setStatus] = useState<Status>('idle');
   const [error, setError] = useState<string | null>(null);
 
-  // DEV MODE: skip payment entirely - go straight to results
+  // DEV MODE: skip payment entirely
   useEffect(() => {
     if (DEV_MODE) {
       console.log('[PaymentStep] DEV_MODE=true, skipping payment');
@@ -50,23 +47,15 @@ export function PaymentStep() {
     setError(null);
 
     try {
-      // Step 1: Send STK push via IntaSend
-      console.log('[PaymentStep] Starting IntaSend STK push...');
       const result = await initiateSTKPush(phone.trim(), PAYMENT_AMOUNT, user.id);
-      console.log('[PaymentStep] STK sent. PaymentID:', result.paymentId);
-
-      // Step 2: Show "waiting for PIN" UI
       setStatus('waiting');
 
-      // Step 3: Poll database until payment confirmed or failed
       const confirmed = await pollPaymentStatus(
         result.paymentId,
         (s) => console.log('[PaymentStep] Status update:', s)
       );
 
       if (confirmed) {
-        // Step 4a: Payment confirmed - fetch full payment record then go to results
-        console.log('[PaymentStep] Payment confirmed!');
         const { data: paymentRow } = await (await import('@/integrations/supabase/client'))
           .supabase
           .from('payments')
@@ -77,20 +66,16 @@ export function PaymentStep() {
         setPayment(paymentRow);
         setStatus('confirmed');
       } else {
-        // Step 4b: Payment failed
-        console.log('[PaymentStep] Payment failed');
         setStatus('failed');
         setError('Payment was not completed. Please try again.');
       }
 
     } catch (err: any) {
-      console.error('[PaymentStep] Error:', err);
       setStatus('failed');
       setError(err.message ?? 'Something went wrong. Please try again.');
     }
   };
 
-  // ── Payment confirmed screen ──────────────────────────────
   if (status === 'confirmed') {
     return (
       <div className="fade-in max-w-md mx-auto px-4 py-12 text-center">
@@ -117,7 +102,6 @@ export function PaymentStep() {
     <div className="fade-in max-w-md mx-auto px-4 py-6">
       <div className="bg-card rounded-2xl shadow-lg p-8">
 
-        {/* Header */}
         <div className="text-center mb-8">
           <div className="w-16 h-16 bg-green-600 rounded-2xl flex items-center justify-center mx-auto mb-4">
             <span className="text-white text-3xl font-bold">M</span>
@@ -128,15 +112,15 @@ export function PaymentStep() {
           </p>
         </div>
 
-        {/* What user gets */}
         <div className="bg-blue-50 dark:bg-blue-950/30 rounded-xl p-4 mb-6 text-sm space-y-1.5 text-blue-700 dark:text-blue-300">
           <p className="font-semibold text-blue-800 dark:text-blue-200 mb-2">You will unlock:</p>
-          <p>All eligible degree programmes</p>
-          <p>University cut-off comparison (2024 data)</p>
-          <p>Personalised interest-matched recommendations</p>
+          <p>✓ All eligible degree programmes</p>
+          <p>✓ University cut-off comparison (2024 data)</p>
+          <p>✓ Personalised interest-matched recommendations</p>
+          <p>✓ University filter — see courses by institution</p>
+          <p>✓ KUCCPS application guide</p>
         </div>
 
-        {/* Form: idle or failed */}
         {(status === 'idle' || status === 'failed') && (
           <div className="space-y-4">
             <div>
@@ -185,7 +169,6 @@ export function PaymentStep() {
           </div>
         )}
 
-        {/* Loading: sending STK */}
         {status === 'loading' && (
           <div className="text-center space-y-4 py-4">
             <div className="w-12 h-12 border-4 border-green-500 border-t-transparent rounded-full animate-spin mx-auto" />
@@ -194,7 +177,6 @@ export function PaymentStep() {
           </div>
         )}
 
-        {/* Waiting: STK sent, waiting for PIN */}
         {status === 'waiting' && (
           <div className="text-center space-y-4 py-4">
             <div className="w-12 h-12 border-4 border-green-500 border-t-transparent rounded-full animate-spin mx-auto" />
@@ -216,7 +198,6 @@ export function PaymentStep() {
         )}
       </div>
 
-      {/* Back button */}
       <div className="mt-4">
         <Button
           variant="outline"

@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useMemo } from 'react';
 import { useApp } from '@/contexts/AppContext';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -6,12 +6,14 @@ import {
   GraduationCap, MapPin, ChevronDown, ChevronUp, RefreshCw,
   TrendingUp, TrendingDown, AlertTriangle, Layers, BookOpen,
   Lock, CreditCard, Info, Star, ArrowLeft, Search, Award,
+  Building2, ChevronRight,
 } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import {
   ClusterDefinition, CourseMatch,
   calculateAllClusterResults, matchCoursesWithCutoffs,
-  getEligibilityDisplay, buildKuccpsChoices,
+  getEligibilityDisplay, buildKuccpsChoices, KuccpsChoice,
+  getClusterLabel, extractClusterNumber,
 } from '@/lib/clusterEngine';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
@@ -43,6 +45,9 @@ function CourseCard({ course, index, isExpanded, onToggle, isDiploma }: {
   onToggle: () => void; isDiploma?: boolean;
 }) {
   const { label, color, bgColor, borderColor } = getEligibilityDisplay(course.eligibilityStatus);
+  // KEY FIX: use getClusterLabel which resolves UUID → proper "Cluster N – Name" label
+  const clusterLabel = getClusterLabel(course.clusterId, course.clusterName);
+
   return (
     <div className={cn('rounded-2xl border overflow-hidden transition-shadow shadow-sm hover:shadow-md', bgColor, borderColor, isDiploma ? 'border-l-4 border-l-blue-400' : '')}>
       <div className="p-4">
@@ -57,7 +62,8 @@ function CourseCard({ course, index, isExpanded, onToggle, isDiploma }: {
               <MapPin className="w-3 h-3 flex-shrink-0" />{course.institution}{course.county && ` · ${course.county}`}
               {course.institutionType && <span className={cn('px-1.5 rounded text-[10px] font-medium', course.institutionType === 'PUBLIC' ? 'bg-blue-100 text-blue-700' : 'bg-purple-100 text-purple-700')}>{course.institutionType}</span>}
             </p>
-            <p className="text-[10px] text-muted-foreground mt-0.5">{course.clusterName}{course.programmeCode && ` · Code: ${course.programmeCode}`}</p>
+            {/* Shows e.g. "Cluster 5 – Engineering, Engineering Technology..." */}
+            <p className="text-[10px] text-muted-foreground mt-0.5 leading-tight">{clusterLabel}{course.programmeCode && ` · Code: ${course.programmeCode}`}</p>
           </div>
           <Badge className={cn('text-[10px] flex-shrink-0 border', color, bgColor, borderColor)}>{label}</Badge>
         </div>
@@ -94,23 +100,142 @@ function CourseCard({ course, index, isExpanded, onToggle, isDiploma }: {
   );
 }
 
+// ── KUCCPS Application Guide Box ──────────────────────────────────────────────
+function KuccpsGuideBox() {
+  const [open, setOpen] = useState(false);
+  return (
+    <div className="mb-6 bg-blue-50 border border-blue-200 rounded-2xl overflow-hidden">
+      <button
+        onClick={() => setOpen(v => !v)}
+        className="w-full flex items-center justify-between px-4 py-3 text-left"
+      >
+        <div className="flex items-center gap-2">
+          <Info className="w-4 h-4 text-blue-600 flex-shrink-0" />
+          <span className="font-semibold text-sm text-blue-800">For Clarity: KUCCPS Course Selection Guide</span>
+        </div>
+        {open ? <ChevronUp className="w-4 h-4 text-blue-600" /> : <ChevronDown className="w-4 h-4 text-blue-600" />}
+      </button>
+      {open && (
+        <div className="px-4 pb-4 text-xs text-blue-800 space-y-3">
+          <p><strong>University Course selection</strong></p>
+          <p>Maximum number of universities to choose is <strong>6</strong>. Maximum number of courses <strong>4</strong>, either same or different categories/fields.</p>
+          <div className="bg-blue-100 rounded-xl p-3 space-y-2">
+            <p className="font-semibold">BREAKDOWN</p>
+            <p>You are required to select <strong>6 options</strong> in one single application cycle.</p>
+            <p className="font-semibold mt-1">Example:</p>
+            <p>1. a) Nursing – KU<br />   b) Nursing – UoN<br />   c) Nursing – Masinde Muliro</p>
+            <p>2. Computer Science – JKUAT</p>
+            <p>3. Electrical Engineering – Dedan Kimathi</p>
+            <p>4. Clinical Medicine – Meru</p>
+            <hr className="border-blue-200 my-2" />
+            <p className="font-semibold">Alternatively options 2, 3 and 4 can take uniformity:</p>
+            <p>1. a) Nursing – KU<br />   b) Nursing – UoN<br />   c) Nursing – Masinde Muliro</p>
+            <p>2. Pharmacy – KU</p>
+            <p>3. Pharmacy – Maseno</p>
+            <p>4. Pharmacy – Kisii</p>
+          </div>
+          <div className="space-y-1">
+            <p className="font-semibold">Note:</p>
+            <p>■ Any course+institution selected in option 1a, b or c cannot be repeated in any other options.</p>
+            <p>■ All courses in option 1 must be the same course.</p>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── University Filter Section ─────────────────────────────────────────────────
+function UniversityFilterSection({ allMatches, onClose }: {
+  allMatches: CourseMatch[];
+  onClose: () => void;
+}) {
+  const [selectedUni, setSelectedUni] = useState<string>('');
+  const [expandedId, setExpandedId] = useState<string | null>(null);
+
+  const universities = useMemo(() => {
+    const uniSet = new Set<string>();
+    allMatches.forEach(m => { if (m.institution) uniSet.add(m.institution); });
+    return [...uniSet].sort();
+  }, [allMatches]);
+
+  const filteredCourses = useMemo(() => {
+    if (!selectedUni) return [];
+    return allMatches
+      .filter(m => m.institution === selectedUni && m.eligibilityStatus !== 'not_competitive')
+      .sort((a, b) => b.userClusterScore - a.userClusterScore);
+  }, [allMatches, selectedUni]);
+
+  return (
+    <div className="mb-8">
+      <div className="flex items-center gap-2 mb-4">
+        <div className="w-7 h-7 rounded-full bg-purple-600 flex items-center justify-center">
+          <Building2 className="w-4 h-4 text-white" />
+        </div>
+        <div className="flex-1">
+          <h3 className="font-bold text-base">Filter by University</h3>
+          <p className="text-xs text-muted-foreground">See courses you qualify for at a specific university</p>
+        </div>
+        <button onClick={onClose} className="text-xs text-muted-foreground underline">Hide</button>
+      </div>
+
+      <select
+        value={selectedUni}
+        onChange={e => { setSelectedUni(e.target.value); setExpandedId(null); }}
+        className="w-full border border-border rounded-xl px-3 py-2.5 text-sm bg-background focus:outline-none focus:ring-2 focus:ring-primary/30 mb-4"
+      >
+        <option value="">— Select a university —</option>
+        {universities.map(u => (
+          <option key={u} value={u}>{u}</option>
+        ))}
+      </select>
+
+      {selectedUni && filteredCourses.length === 0 && (
+        <div className="text-center py-6 text-muted-foreground text-sm">
+          <Building2 className="w-8 h-8 mx-auto mb-2 opacity-30" />
+          <p>No qualifying courses found at <strong>{selectedUni}</strong>.</p>
+        </div>
+      )}
+
+      {selectedUni && filteredCourses.length > 0 && (
+        <div>
+          <p className="text-xs text-muted-foreground mb-3">
+            <strong>{filteredCourses.length}</strong> qualifying course{filteredCourses.length !== 1 ? 's' : ''} at <strong>{selectedUni}</strong>
+          </p>
+          <div className="space-y-3">
+            {filteredCourses.map((course, i) => (
+              <CourseCard
+                key={course.courseId}
+                course={course}
+                index={i + 1}
+                isDiploma={false}
+                isExpanded={expandedId === course.courseId}
+                onToggle={() => setExpandedId(p => p === course.courseId ? null : course.courseId)}
+              />
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── Main ResultsStep ──────────────────────────────────────────────────────────
+
 export function ResultsStep() {
-  const { user, compulsorySubjects, optionalSubjects, interestResponses, resetApp, payment, setCurrentStep, isDiplomaOnly } = useApp(); // ADDED isDiplomaOnly
+  const { user, compulsorySubjects, optionalSubjects, interestResponses, resetApp, payment, setCurrentStep, isDiplomaOnly } = useApp();
   const [degreeMatches, setDegreeMatches] = useState<CourseMatch[]>([]);
   const [diplomaMatches, setDiplomaMatches] = useState<CourseMatch[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isPaymentValid, setIsPaymentValid] = useState(false);
   const [expandedId, setExpandedId] = useState<string | null>(null);
-  // ADDED: if isDiplomaOnly, lock to 'diploma' from the start
   const [filter, setFilter] = useState<ProgrammeFilter>(isDiplomaOnly ? 'diploma' : 'both');
   const [searchQuery, setSearchQuery] = useState('');
+  const [showExtraDegrees, setShowExtraDegrees] = useState(false);
+  const [showUniversityFilter, setShowUniversityFilter] = useState(false);
 
   useEffect(() => { verifyAndLoad(); }, []);
-
-  // ADDED: keep filter in sync if isDiplomaOnly is set after mount
-  useEffect(() => {
-    if (isDiplomaOnly) setFilter('diploma');
-  }, [isDiplomaOnly]);
+  useEffect(() => { if (isDiplomaOnly) setFilter('diploma'); }, [isDiplomaOnly]);
 
   const verifyAndLoad = async () => {
     if (DEV_MODE) { setIsPaymentValid(true); await calculateEligibility(); return; }
@@ -147,7 +272,6 @@ export function ResultsStep() {
       const degreeCourses = (coursesData as any[]).filter(c => c.programme_level !== 'diploma');
       const diplomaCourses = (coursesData as any[]).filter(c => c.programme_level === 'diploma');
 
-      // ADDED: if diploma-only, set 0 degrees
       setDegreeMatches(isDiplomaOnly ? [] : matchCoursesWithCutoffs(clusterResults, degreeCourses, fieldScores));
       setDiplomaMatches(matchCoursesWithCutoffs(clusterResults, diplomaCourses, fieldScores));
     } catch (err) {
@@ -193,7 +317,9 @@ export function ResultsStep() {
 
   const showDegrees = filter === 'both' || filter === 'degree';
   const showDiplomas = filter === 'both' || filter === 'diploma';
-  const totalQualified = degreeMatches.filter(m => m.eligibilityStatus !== 'not_competitive').length + diplomaMatches.filter(m => m.eligibilityStatus !== 'not_competitive').length;
+  const totalQualified = degreeMatches.filter(m => m.eligibilityStatus !== 'not_competitive').length +
+    diplomaMatches.filter(m => m.eligibilityStatus !== 'not_competitive').length;
+  const allMatchesForFilter = [...degreeMatches, ...diplomaMatches];
 
   if (!degreeMatches.length && !diplomaMatches.length) return (
     <div className="fade-in max-w-2xl mx-auto px-4 py-12 text-center">
@@ -218,27 +344,24 @@ export function ResultsStep() {
       </div>
       <div className="kenya-stripe rounded-full mb-6" />
 
-      {/* ADDED: Diploma-only orange banner at top of results */}
       {isDiplomaOnly && (
         <div className="mb-6 bg-orange-50 border border-orange-300 rounded-xl p-4 flex items-start gap-3">
           <AlertTriangle className="w-5 h-5 text-orange-600 shrink-0 mt-0.5" />
           <div>
             <p className="font-semibold text-orange-800 text-sm">Diploma Programmes Only</p>
-            <p className="text-xs text-orange-700 mt-1">
-              Your aggregate is below <strong>C+</strong>. Degree programmes are not shown.
-              Below are diploma and certificate courses you qualify for.
-            </p>
+            <p className="text-xs text-orange-700 mt-1">Your aggregate is below <strong>C+</strong>. Degree programmes are not shown.</p>
           </div>
         </div>
       )}
 
+      {/* Stats */}
       <div className="grid grid-cols-3 gap-3 mb-5">
         <div className="glass-card rounded-xl p-3 text-center"><div className="text-2xl font-bold text-primary">{degreeMatches.length + diplomaMatches.length}</div><div className="text-xs text-muted-foreground">Courses Ranked</div></div>
         <div className="glass-card rounded-xl p-3 text-center"><div className="text-2xl font-bold text-green-700">{totalQualified}</div><div className="text-xs text-muted-foreground">You Qualify For</div></div>
         <div className="glass-card rounded-xl p-3 text-center"><div className="text-2xl font-bold text-blue-700">{qualifiedDiplomas.length}</div><div className="text-xs text-muted-foreground">Diploma Options</div></div>
       </div>
 
-      {/* Programme Level Toggle — ADDED: disable degree/both buttons when isDiplomaOnly */}
+      {/* Programme Level Toggle */}
       <div className="glass-card rounded-2xl p-4 mb-6">
         <p className="text-xs font-semibold text-muted-foreground mb-3 text-center">Show me:</p>
         <div className="grid grid-cols-3 gap-2">
@@ -248,7 +371,6 @@ export function ResultsStep() {
             { key: 'diploma' as ProgrammeFilter, label: 'Diplomas Only', icon: <Award className="w-4 h-4" /> },
           ]).map(opt => (
             <button key={opt.key}
-              // ADDED: if isDiplomaOnly, lock to diploma — disable the other two
               onClick={() => { if (!isDiplomaOnly || opt.key === 'diploma') setFilter(opt.key); }}
               disabled={isDiplomaOnly && opt.key !== 'diploma'}
               className={cn('flex flex-col items-center gap-1 rounded-xl p-3 text-xs font-medium border transition-all',
@@ -261,21 +383,49 @@ export function ResultsStep() {
       </div>
 
       {/* Search */}
-      <div className="relative mb-6">
+      <div className="relative mb-4">
         <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
         <input type="text" placeholder="Search by course, university or field…" value={searchQuery}
           onChange={e => setSearchQuery(e.target.value)}
           className="w-full pl-9 pr-4 py-2.5 text-sm border border-border rounded-xl bg-background focus:outline-none focus:ring-2 focus:ring-primary/30" />
       </div>
 
+      {/* University filter toggle */}
+      {!showUniversityFilter && (
+        <button
+          onClick={() => setShowUniversityFilter(true)}
+          className="w-full mb-6 flex items-center justify-center gap-2 py-2.5 px-4 rounded-xl border border-purple-300 bg-purple-50 text-purple-700 text-sm font-medium hover:bg-purple-100 transition-colors"
+        >
+          <Building2 className="w-4 h-4" />
+          Filter by University
+          <ChevronRight className="w-4 h-4 ml-auto" />
+        </button>
+      )}
+
+      {/* KUCCPS guide */}
+      <KuccpsGuideBox />
+
+      {/* University filter section */}
+      {showUniversityFilter && (
+        <UniversityFilterSection
+          allMatches={allMatchesForFilter}
+          onClose={() => setShowUniversityFilter(false)}
+        />
+      )}
+
       {/* DEGREES */}
       {showDegrees && primaryDegrees.length > 0 && (
         <div className="mb-8">
           <div className="flex items-center gap-2 mb-4">
             <div className="w-7 h-7 rounded-full bg-primary flex items-center justify-center"><GraduationCap className="w-4 h-4 text-primary-foreground" /></div>
-            <div><h3 className="font-bold text-base">Degree Programmes</h3><p className="text-xs text-muted-foreground">Slot 1a/b/c = best cluster · Slots 2–6 = next clusters</p></div>
+            <div>
+              <h3 className="font-bold text-base">Degree Programmes</h3>
+              <p className="text-xs text-muted-foreground">Slot 1a/b/c = best cluster · Slots 2–6 = next clusters</p>
+            </div>
             <span className="ml-auto text-xs font-semibold text-muted-foreground">{degreeMatches.filter(m => m.eligibilityStatus !== 'not_competitive').length} qualify</span>
           </div>
+
+          {/* Slot 1 */}
           {primaryDegrees.filter(c => c.rank === 1).length > 0 && (
             <div className="mb-4">
               <div className="text-xs font-semibold text-primary flex items-center gap-1 mb-2 px-1">
@@ -291,6 +441,8 @@ export function ResultsStep() {
               </div>
             </div>
           )}
+
+          {/* Slots 2–6 */}
           {[2, 3, 4, 5, 6].map(slot => {
             const sc = primaryDegrees.filter(c => c.rank === slot);
             if (!sc.length) return null;
@@ -298,7 +450,7 @@ export function ResultsStep() {
               <div key={slot} className="mt-4">
                 <div className="text-xs font-semibold text-muted-foreground flex items-center gap-1 mb-2 px-1">
                   <span className="w-5 h-5 rounded-full bg-muted flex items-center justify-center text-[10px] font-bold">{slot}</span>
-                  Choice {slot} · {sc[0].course.clusterName}
+                  Choice {slot} · {getClusterLabel(sc[0].course.clusterId, sc[0].course.clusterName)}
                 </div>
                 <div className="space-y-3 ml-2 pl-3 border-l-2 border-border">
                   {sc.map(choice => (
@@ -310,6 +462,8 @@ export function ResultsStep() {
               </div>
             );
           })}
+
+          {/* Extra courses — first 5 visible, rest behind button */}
           {extraDegrees.length > 0 && (
             <div className="mt-6">
               <div className="flex items-center gap-2 mb-3">
@@ -318,12 +472,33 @@ export function ResultsStep() {
                 <span className="text-xs text-muted-foreground ml-auto">{applySearch(extraDegrees.map(c => c.course)).length} courses</span>
               </div>
               <div className="space-y-3">
-                {applySearch(extraDegrees.map(c => c.course)).map((course, i) => (
+                {applySearch(extraDegrees.map(c => c.course)).slice(0, 5).map((course, i) => (
                   <CourseCard key={course.courseId} course={course} index={primaryDegrees.length + i + 1} isDiploma={false}
                     isExpanded={expandedId === course.courseId}
                     onToggle={() => setExpandedId(p => p === course.courseId ? null : course.courseId)} />
                 ))}
               </div>
+              {applySearch(extraDegrees.map(c => c.course)).length > 5 && (
+                <>
+                  {showExtraDegrees && (
+                    <div className="space-y-3 mt-3">
+                      {applySearch(extraDegrees.map(c => c.course)).slice(5).map((course, i) => (
+                        <CourseCard key={course.courseId} course={course} index={primaryDegrees.length + 5 + i + 1} isDiploma={false}
+                          isExpanded={expandedId === course.courseId}
+                          onToggle={() => setExpandedId(p => p === course.courseId ? null : course.courseId)} />
+                      ))}
+                    </div>
+                  )}
+                  <button
+                    onClick={() => setShowExtraDegrees(v => !v)}
+                    className="mt-3 w-full text-sm text-primary underline flex items-center justify-center gap-1"
+                  >
+                    {showExtraDegrees
+                      ? 'Show fewer'
+                      : `Show ${applySearch(extraDegrees.map(c => c.course)).length - 5} more courses`}
+                  </button>
+                </>
+              )}
             </div>
           )}
         </div>
@@ -342,7 +517,7 @@ export function ResultsStep() {
           {qualifiedDiplomas.length === 0 ? (
             <div className="glass-card rounded-xl p-6 text-center text-muted-foreground text-sm">
               <Award className="w-10 h-10 mx-auto mb-2 opacity-30" />
-              <p>No diploma courses matched. Diplomas typically require a C- mean grade in KCSE.</p>
+              <p>No diploma courses matched. Diplomas typically require a C- mean grade.</p>
             </div>
           ) : (
             <div className="space-y-3">
@@ -360,7 +535,7 @@ export function ResultsStep() {
             <div className="flex items-start gap-3">
               <Info className="w-4 h-4 text-blue-600 flex-shrink-0 mt-0.5" />
               <div className="text-xs text-blue-700 space-y-1">
-                <p><strong>About Diploma Placement:</strong> Minimum entry is <strong>C- (5 pts)</strong> mean grade. Offered at National Polytechnics, TVETs and some universities.</p>
+                <p><strong>About Diploma Placement:</strong> Minimum entry is <strong>C- (5 pts)</strong> mean grade.</p>
                 <p>A diploma can lead to a <strong>degree upgrade later</strong> through bridging programmes.</p>
               </div>
             </div>
@@ -380,8 +555,6 @@ export function ResultsStep() {
         <Button onClick={() => window.open('https://students.kuccps.net/', '_blank')} className="flex-1 bg-gradient-primary"><GraduationCap className="w-4 h-4 mr-2" />Apply on KUCCPS</Button>
       </div>
 
-      {/* ── Leave a Review ── */}
-      {/* ── 2024 KUCCPS Cutoff Points PDF ── */}
       <div className="mt-6 flex items-center justify-between px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl">
         <div className="flex items-center gap-2">
           <BookOpen className="w-4 h-4 text-blue-600" />
@@ -391,12 +564,13 @@ export function ResultsStep() {
           Open / Download PDF
         </a>
       </div>
+
       <ReviewForm userId={user?.id} />
     </div>
   );
 }
 
-// ── Review submission form ────────────────────────────────────────────────────
+// ── Review form ───────────────────────────────────────────────────────────────
 function ReviewForm({ userId }: { userId?: string }) {
   const [name, setName] = useState('');
   const [message, setMessage] = useState('');
@@ -413,27 +587,18 @@ function ReviewForm({ userId }: { userId?: string }) {
     setIsLoading(true);
     try {
       const { error } = await supabase.from('reviews').insert({
-        reviewer_name: name.trim(),
-        message: message.trim(),
-        rating,
-        user_id: userId ?? null,
-        approved: false, // admin must approve before it shows on Welcome
+        reviewer_name: name.trim(), message: message.trim(), rating, user_id: userId ?? null, approved: false,
       });
       if (error) throw error;
       setSubmitted(true);
     } catch (err) {
-      console.error(err);
       toast.error('Could not save review. Please try again.');
-    } finally {
-      setIsLoading(false);
-    }
+    } finally { setIsLoading(false); }
   };
 
   if (submitted) return (
     <div className="mt-8 bg-green-50 border border-green-200 rounded-2xl p-5 text-center">
-      <div className="flex gap-0.5 justify-center mb-2">
-        {[1, 2, 3, 4, 5].map(i => <Star key={i} className="w-4 h-4 fill-yellow-400 text-yellow-400" />)}
-      </div>
+      <div className="flex gap-0.5 justify-center mb-2">{[1,2,3,4,5].map(i=><Star key={i} className="w-4 h-4 fill-yellow-400 text-yellow-400"/>)}</div>
       <p className="font-semibold text-green-800 text-sm">Thank you for your review!</p>
       <p className="text-xs text-green-700 mt-1">It will appear on the home page once approved.</p>
     </div>
@@ -443,31 +608,21 @@ function ReviewForm({ userId }: { userId?: string }) {
     <div className="mt-8 glass-card rounded-2xl p-5">
       <h3 className="font-semibold text-sm mb-1">Rate Your Experience</h3>
       <p className="text-xs text-muted-foreground mb-4">Help other students by leaving a quick review.</p>
-
-      {/* Star picker */}
       <div className="flex gap-1 mb-4">
-        {[1, 2, 3, 4, 5].map(i => (
-          <button key={i} type="button"
-            onMouseEnter={() => setHovered(i)}
-            onMouseLeave={() => setHovered(0)}
-            onClick={() => setRating(i)}
-            className="p-0.5 focus:outline-none">
-            <Star className={`w-7 h-7 transition-colors ${(hovered || rating) >= i ? 'fill-yellow-400 text-yellow-400' : 'text-muted-foreground'}`} />
+        {[1,2,3,4,5].map(i=>(
+          <button key={i} type="button" onMouseEnter={()=>setHovered(i)} onMouseLeave={()=>setHovered(0)} onClick={()=>setRating(i)} className="p-0.5 focus:outline-none">
+            <Star className={`w-7 h-7 transition-colors ${(hovered||rating)>=i?'fill-yellow-400 text-yellow-400':'text-muted-foreground'}`}/>
           </button>
         ))}
-        {rating > 0 && <span className="text-xs text-muted-foreground self-center ml-1">{rating}/5</span>}
+        {rating>0&&<span className="text-xs text-muted-foreground self-center ml-1">{rating}/5</span>}
       </div>
-
       <div className="space-y-3">
-        <input type="text" placeholder="Your name" value={name}
-          onChange={e => setName(e.target.value)} maxLength={40}
-          className="w-full border border-border rounded-xl px-3 py-2.5 text-sm bg-background focus:outline-none focus:ring-2 focus:ring-primary/30" />
-        <textarea placeholder="Share your experience in a few words..." value={message}
-          onChange={e => setMessage(e.target.value)} rows={3} maxLength={200}
-          className="w-full border border-border rounded-xl px-3 py-2.5 text-sm bg-background focus:outline-none focus:ring-2 focus:ring-primary/30 resize-none" />
-        <Button onClick={handleSubmit} disabled={isLoading || !name || !message || rating === 0}
-          className="w-full" variant="outline">
-          {isLoading ? 'Submitting…' : 'Submit Review'}
+        <input type="text" placeholder="Your name" value={name} onChange={e=>setName(e.target.value)} maxLength={40}
+          className="w-full border border-border rounded-xl px-3 py-2.5 text-sm bg-background focus:outline-none focus:ring-2 focus:ring-primary/30"/>
+        <textarea placeholder="Share your experience in a few words..." value={message} onChange={e=>setMessage(e.target.value)} rows={3} maxLength={200}
+          className="w-full border border-border rounded-xl px-3 py-2.5 text-sm bg-background focus:outline-none focus:ring-2 focus:ring-primary/30 resize-none"/>
+        <Button onClick={handleSubmit} disabled={isLoading||!name||!message||rating===0} className="w-full" variant="outline">
+          {isLoading?'Submitting…':'Submit Review'}
         </Button>
       </div>
     </div>

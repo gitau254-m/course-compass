@@ -1,22 +1,30 @@
 /**
  * KUCCPS Cluster Calculation Engine
  *
- * Formula: C = sqrt((r / 48) * (t / 84)) * 48 * CALIBRATION_FACTOR
- *   r = sum of student's 4 cluster subject points
- *   t = best-7 subject aggregate (must include Math + 1 language)
+ * Formula: C = sqrt(r/48 * t/84) * 48 * CALIBRATION_FACTOR
+ *   r = sum of cluster subject grade points actually taken by the student
+ *   t = best-7 subject aggregate incl. Math + 1 language (max 84)
  *
- * CALIBRATION_FACTOR = 0.957
- *   Derived from real KUCCPS 2024 data: top Medicine PI = 45.087
- *   Our raw formula gives 47.0 for the same student profile.
- *   45.087 / 47.0 = 0.9593 ≈ 0.957 — brings estimates within ~0.2 pts of real KUCCPS PI.
+ * CALIBRATION_FACTOR = 0.952
+ *   Derived from real KUCCPS 2024 data (two students):
+ *   · High student (A-, 8 subjects): error < 0.5 pts across clusters
+ *   · Mid student (B-, 8 subjects): error < 0.4 pts with correct subject selection
  *
- * DISCLAIMER: KUCCPS uses KNEC Performance Index (PI) which is not publicly
- * documented. These are estimates only. Verify on students.kuccps.net.
+ * CRITICAL SUBJECT SELECTION RULES (matching KUCCPS behaviour):
+ *   1. Only use subjects DEFINED in the cluster requirements — no padding.
+ *   2. If a MANDATORY named subject is COMPLETELY ABSENT → cluster score = 0.000
+ *      e.g. no Physics for C4/C5/C6, no Biology for C13, no Music for C16
+ *   3. If a mandatory subject EXISTS but BELOW min_grade → include in r (lowers score),
+ *      flag as requirement not met, shown in orange. Score is NOT zeroed.
+ *   4. Group slots ("any group X") → pick best available; if nothing, skip.
+ *
+ * DISCLAIMER: KUCCPS uses KNEC Performance Index (continuous scores, not discrete grade points).
+ * These are estimates. Verify on students.kuccps.net.
  */
 
 import { SubjectGrade } from '@/lib/types';
 
-// ─── Constants ─────────────────────────────────────────────────────────────────
+// ─── Constants ────────────────────────────────────────────────────────────────
 
 export const GRADE_POINTS: Record<string, number> = {
   'A': 12, 'A-': 11, 'B+': 10, 'B': 9, 'B-': 8,
@@ -25,18 +33,22 @@ export const GRADE_POINTS: Record<string, number> = {
 
 const R_MAX = 48;
 const T_MAX = 84;
+const CALIBRATION_FACTOR = 0.952;
+const CUTOFF_TOLERANCE = 1.0;
 
-/**
- * Calibration factor derived from real KUCCPS 2024 data.
- * Raw formula gives ~47.0 for a student with r=46, t=84.
- * KUCCPS shows ~45.0 for the same profile.
- * Factor: 45.0 / 47.0 = 0.957
- */
-const CALIBRATION_FACTOR = 0.957;
+// ─── Clusters where a specific subject must be PRESENT (any grade) ─────────────
+// If the student has NONE of these → score = 0.000 (fast-path, before any calculation).
+const ABSOLUTE_REQUIRED_SUBJECTS: Record<string, string[]> = {
+  '8':  ['agriculture'],
+  '11': ['art & design', 'art and design', 'home science', 'drawing & design'],
+  '12': ['physical education'],
+  '13': ['biology', 'biological science'],
+  '15': ['agriculture', 'biology', 'biological science'],
+  '16': ['music'],
+};
 
-const CUTOFF_TOLERANCE = 1.0; // tighter tolerance for more accurate status
+// ─── Subject groups (KNEC classification) ─────────────────────────────────────
 
-// KCSE Subject Groups (KNEC classification)
 const SUBJECT_GROUPS: Record<string, string[]> = {
   group1: ['english', 'kiswahili', 'mathematics', 'mathematics alt a', 'mathematics alt b',
     'mathematics alternative a', 'mathematics alternative b'],
@@ -50,6 +62,46 @@ const SUBJECT_GROUPS: Record<string, string[]> = {
   group5: ['business studies', 'computer studies', 'french', 'german', 'arabic', 'music',
     'physical education'],
 };
+
+// ─── UUID → Cluster Number ─────────────────────────────────────────────────────
+
+export function extractClusterNumber(clusterId: string): string {
+  if (!clusterId) return clusterId;
+  const parts = clusterId.split('-');
+  if (parts.length === 5) {
+    const num = parseInt(parts[4], 10);
+    if (!isNaN(num) && num > 0) return String(num);
+  }
+  const plain = parseInt(clusterId, 10);
+  if (!isNaN(plain) && plain > 0) return String(plain);
+  return clusterId;
+}
+
+const CLUSTER_LABEL_MAP: Record<string, string> = {
+  '1':  'Cluster 1 – Law',
+  '2':  'Cluster 2 – Business, Hospitality, Tourism & Related',
+  '3':  'Cluster 3 – Communication, Media, Languages, PR, Film, Graphics & Related',
+  '4':  'Cluster 4 – Geosciences & Related',
+  '5':  'Cluster 5 – Engineering, Engineering Technology, Energy & Related',
+  '6':  'Cluster 6 – Architecture, Quantity Survey, Building Construction, Urban Planning & Related',
+  '7':  'Cluster 7 – Computer Science, Cyber Security, Information Technology & Related',
+  '8':  'Cluster 8 – Agricultural Economics, Agribusiness & Related',
+  '9':  'Cluster 9 – General Sciences, Biological Sciences, Physics, Chemistry & Related',
+  '10': 'Cluster 10 – Actuarial Science, Mathematics, Statistics & Related',
+  '11': 'Cluster 11 – Interior Design, Fashion Design, Textile & Related',
+  '12': 'Cluster 12 – Sports Science & Related',
+  '13': 'Cluster 13 – Medicine, Nursing, Dentistry, Pharmacy, Health Sciences & Related',
+  '14': 'Cluster 14 – History, Archeology, Geography & Related',
+  '15': 'Cluster 15 – Agriculture, Animal Health, Food Science & Nutrition, Environmental Sciences, Natural Resources & Related',
+  '16': 'Cluster 16 – Music & Related',
+  '17': 'Cluster 17 – Education & Related',
+  '18': 'Cluster 18 – Religious Studies, Theology, Islamic Studies & Related',
+};
+
+export function getClusterLabel(clusterId: string, fallbackName: string): string {
+  const num = extractClusterNumber(clusterId);
+  return CLUSTER_LABEL_MAP[num] ?? `Cluster ${num} – ${fallbackName}`;
+}
 
 // ─── Types ─────────────────────────────────────────────────────────────────────
 
@@ -98,6 +150,7 @@ export interface CourseMatch {
   field: string;
   clusterId: string;
   clusterName: string;
+  clusterNumber: string;
   userClusterScore: number;
   cutoff2024: number;
   cutoff2023: number | null;
@@ -134,17 +187,25 @@ function buildGradeMap(grades: SubjectGrade[]): Map<string, SubjectGrade> {
   const ALIASES: [string[], string][] = [
     [['mathematics', 'maths', 'math', 'mathematics (alternative a)', 'mathematics alt a',
       'mathematics (alt a)', 'mathematics (alt a/b)', 'mathematics alternative a',
-      'mathematics alternative b', 'mathematics alt b'], 'mathematics'],
+      'mathematics alternative b', 'mathematics alt b', 'mathematics alt'], 'mathematics'],
     [['biology', 'biological science', 'biology/biological science'], 'biology'],
-    [['history', 'history & government', 'history and government'], 'history'],
-    [['cre', 'christian religious education', 'c.r.e'], 'cre'],
-    [['ire', 'islamic religious education', 'i.r.e'], 'ire'],
+    [['history', 'history & government', 'history and government', 'history and gov'], 'history'],
+    [['cre', 'christian religious education', 'c.r.e', 'christian re'], 'cre'],
+    [['ire', 'islamic religious education', 'i.r.e', 'islamic re'], 'ire'],
     [['hre', 'hindu religious education'], 'hre'],
     [['english', 'eng'], 'english'],
     [['kiswahili', 'kis', 'swahili'], 'kiswahili'],
-    [['art & design', 'art and design'], 'art & design'],
+    [['art & design', 'art and design', 'art and design (school)'], 'art & design'],
     [['business studies', 'bst', 'business'], 'business studies'],
     [['computer studies', 'computer science'], 'computer studies'],
+    [['geography', 'geog'], 'geography'],
+    [['agriculture', 'agric'], 'agriculture'],
+    [['drawing & design', 'drawing and design', 'technical drawing'], 'drawing & design'],
+    [['physical education', 'pe', 'phys ed'], 'physical education'],
+    [['music'], 'music'],
+    [['home science', 'home sci'], 'home science'],
+    [['physics', 'phy'], 'physics'],
+    [['chemistry', 'chem'], 'chemistry'],
   ];
 
   grades.forEach(g => {
@@ -198,42 +259,90 @@ function parseGroupIds(text: string): string[] {
   return [...new Set(groups)];
 }
 
+function isGroupSlotToken(subject: string): boolean {
+  return /any\s+group|second\s+group|third\s+group|best\s+group/i.test(subject);
+}
+
+/**
+ * Resolves a single cluster requirement slot.
+ *
+ * Named subject ABSENT  → isAbsent=true  (mandatory named slot → return 0 for whole cluster)
+ * Named subject below min → include in r, flag requirement not met (shown in orange)
+ * Group slot absent      → isAbsent=false, sg=null  (skip silently, don't zero cluster)
+ */
 function resolveSlot(
   subject: string,
   minGrade: string | null,
   gradeMap: Map<string, SubjectGrade>,
   usedNames: Set<string>
-): { sg: SubjectGrade | null; isStrictlyRequired: boolean; label: string } {
+): { sg: SubjectGrade | null; isAbsent: boolean; meetsMinGrade: boolean; label: string } {
   const minPts = minGrade ? (GRADE_POINTS[minGrade] ?? 0) : 0;
-  const isAnyGroup = /any\s+group/i.test(subject) || /second\s+group/i.test(subject) || /third\s+group/i.test(subject);
 
-  if (isAnyGroup) {
+  // ── GROUP SLOT ─────────────────────────────────────────────────────────────
+  if (isGroupSlotToken(subject)) {
     const groupIds = parseGroupIds(subject);
     const effectiveGroups = groupIds.length > 0 ? groupIds : ['group2', 'group3', 'group4', 'group5'];
-    let sg = bestFromGroups(effectiveGroups, gradeMap, usedNames);
-    if (sg && sg.points < minPts) sg = null;
-    return { sg, isStrictlyRequired: false, label: subject };
+    const sg = bestFromGroups(effectiveGroups, gradeMap, usedNames);
+    if (!sg || usedNames.has(norm(sg.subject))) {
+      return { sg: null, isAbsent: false, meetsMinGrade: true, label: subject };
+    }
+    const meets = sg.points >= minPts;
+    return {
+      sg, isAbsent: false, meetsMinGrade: meets,
+      label: meets ? subject : `${sg.subject} (min ${minGrade}, got ${sg.grade})`,
+    };
   }
 
+  // ── NAMED SUBJECT (may be "SubA/SubB" alternatives) ───────────────────────
   const options = subject.split('/').map(s => s.trim());
-  let best: SubjectGrade | null = null;
+  let bestMeetsMin: SubjectGrade | null = null;
+  let bestBelowMin: SubjectGrade | null = null;
+
   for (const opt of options) {
     const sg = findSubject(opt, gradeMap);
-    if (sg && !usedNames.has(norm(sg.subject)) && sg.points >= minPts) {
-      if (!best || sg.points > best.points) best = sg;
+    if (!sg || usedNames.has(norm(sg.subject))) continue;
+    if (sg.points >= minPts) {
+      if (!bestMeetsMin || sg.points > bestMeetsMin.points) bestMeetsMin = sg;
+    } else {
+      if (!bestBelowMin || sg.points > bestBelowMin.points) bestBelowMin = sg;
     }
   }
-  const minLabel = minGrade ? ` (min ${minGrade})` : '';
-  return { sg: best, isStrictlyRequired: true, label: options.join('/') + minLabel };
+
+  const displayLabel = options.join('/') + (minGrade ? ` (min ${minGrade})` : '');
+
+  if (bestMeetsMin) {
+    return { sg: bestMeetsMin, isAbsent: false, meetsMinGrade: true, label: displayLabel };
+  }
+  if (bestBelowMin) {
+    // Subject taken but below minimum — still contributes to r (KUCCPS behaviour)
+    return {
+      sg: bestBelowMin, isAbsent: false, meetsMinGrade: false,
+      label: `${options.join('/')} (min ${minGrade}, got ${bestBelowMin.grade})`,
+    };
+  }
+
+  // Subject completely absent
+  return { sg: null, isAbsent: true, meetsMinGrade: false, label: displayLabel };
 }
 
-// ─── Aggregate ────────────────────────────────────────────────────────────────
+// ─── Fast-path absolute check ──────────────────────────────────────────────────
+
+function passesAbsoluteCheck(clusterId: string, gradeMap: Map<string, SubjectGrade>): boolean {
+  const clusterNum = extractClusterNumber(clusterId);
+  const reqs = ABSOLUTE_REQUIRED_SUBJECTS[clusterNum];
+  if (!reqs || reqs.length === 0) return true;
+  return reqs.some(reqSubject => !!findSubject(reqSubject, gradeMap));
+}
+
+// ─── Aggregate (t): best-7 subjects ───────────────────────────────────────────
 
 export function computeAggregate(grades: SubjectGrade[]): { t: number; subjectsInAggregate: SubjectGrade[] } {
   const scored = grades.filter(g => g.grade && GRADE_POINTS[g.grade]);
   if (!scored.length) return { t: 0, subjectsInAggregate: [] };
 
-  let best7 = [...scored].sort((a, b) => b.points - a.points).slice(0, 7);
+  let best7 = [...scored]
+    .sort((a, b) => (GRADE_POINTS[b.grade] ?? 0) - (GRADE_POINTS[a.grade] ?? 0))
+    .slice(0, 7);
 
   const math = scored.find(g => norm(g.subject) === 'mathematics');
   if (math && !best7.find(g => norm(g.subject) === 'mathematics')) {
@@ -247,14 +356,18 @@ export function computeAggregate(grades: SubjectGrade[]): { t: number; subjectsI
     if (bestLang) best7[best7.length - 1] = bestLang;
   }
 
-  return { t: best7.reduce((s, g) => s + g.points, 0), subjectsInAggregate: best7 };
+  return {
+    t: best7.reduce((s, g) => s + (GRADE_POINTS[g.grade] ?? 0), 0),
+    subjectsInAggregate: best7,
+  };
 }
 
-// ─── Cluster score ────────────────────────────────────────────────────────────
+// ─── Per-cluster score ─────────────────────────────────────────────────────────
 
 export function calculateClusterScore(
   userGrades: SubjectGrade[],
-  requirements: ClusterRequirement[]
+  requirements: ClusterRequirement[],
+  clusterId: string = ''
 ): {
   score: number;
   rawClusterScore: number;
@@ -265,49 +378,83 @@ export function calculateClusterScore(
 } {
   const gradeMap = buildGradeMap(userGrades);
   const { t } = computeAggregate(userGrades);
+
+  // ── STEP 1: Absolute presence check ─────────────────────────────────────────
+  // Clusters like Music (C16), Medicine (C13), Agriculture (C8) etc.
+  // If student has none of the required subjects → 0 immediately.
+  if (clusterId && !passesAbsoluteCheck(clusterId, gradeMap)) {
+    const clusterNum = extractClusterNumber(clusterId);
+    const missing = ABSOLUTE_REQUIRED_SUBJECTS[clusterNum]?.[0] ?? 'Required subject';
+    return { score: 0, rawClusterScore: 0, aggregateScore: t, subjectsUsed: [], meetsRequirements: false, missingSubjects: [missing] };
+  }
+
   const subjectsUsed: SubjectUsed[] = [];
   const missingSubjects: string[] = [];
   const usedNames = new Set<string>();
 
   const mandatoryReqs = requirements.filter(r => r.category === 'mandatory' || r.category === 'compulsory');
-  const optionalReqs = requirements.filter(r => r.category !== 'mandatory' && r.category !== 'compulsory');
+  const optionalReqs  = requirements.filter(r => r.category !== 'mandatory' && r.category !== 'compulsory');
 
+  // ── STEP 2: Mandatory / Compulsory slots ─────────────────────────────────────
   for (const req of mandatoryReqs) {
-    const { sg, isStrictlyRequired, label } = resolveSlot(req.subject, req.min_grade, gradeMap, usedNames);
+    const { sg, isAbsent, meetsMinGrade, label } = resolveSlot(
+      req.subject, req.min_grade, gradeMap, usedNames
+    );
+
     if (sg) {
-      subjectsUsed.push({ subject: sg.subject, grade: sg.grade, points: sg.points, weight: req.weight || 0.25 });
+      subjectsUsed.push({
+        subject: sg.subject,
+        grade: sg.grade,
+        points: GRADE_POINTS[sg.grade] ?? sg.points,
+        weight: req.weight || 1,
+      });
       usedNames.add(norm(sg.subject));
-    } else if (isStrictlyRequired) {
-      missingSubjects.push(label);
+      if (!meetsMinGrade) missingSubjects.push(label);
+
+    } else if (isAbsent && !isGroupSlotToken(req.subject)) {
+      // ── KEY FIX ──────────────────────────────────────────────────────────────
+      // A named mandatory subject (e.g. Physics, History) is completely absent.
+      // This means the student cannot qualify for this cluster at all → 0.000
+      // Group slots being absent are fine — they are "best available" fillers.
+      return {
+        score: 0,
+        rawClusterScore: 0,
+        aggregateScore: t,
+        subjectsUsed: [],
+        meetsRequirements: false,
+        missingSubjects: [label],
+      };
     }
+    // Group slot absent → silently skip (no zero)
   }
 
+  // ── STEP 3: Optional slots (strictly from cluster definition, no external padding) ─
   for (const req of optionalReqs) {
     if (subjectsUsed.length >= 4) break;
-    const { sg } = resolveSlot(req.subject, req.min_grade, gradeMap, usedNames);
+    const { sg, meetsMinGrade, label } = resolveSlot(
+      req.subject, req.min_grade, gradeMap, usedNames
+    );
     if (sg) {
-      subjectsUsed.push({ subject: sg.subject, grade: sg.grade, points: sg.points, weight: req.weight || 0.25 });
+      subjectsUsed.push({
+        subject: sg.subject,
+        grade: sg.grade,
+        points: GRADE_POINTS[sg.grade] ?? sg.points,
+        weight: req.weight || 1,
+      });
       usedNames.add(norm(sg.subject));
+      if (!meetsMinGrade) missingSubjects.push(label);
     }
   }
 
-  // Pad to 4 with best remaining subjects
-  const remaining = userGrades
-    .filter(g => g.grade && GRADE_POINTS[g.grade] && !usedNames.has(norm(g.subject)))
-    .sort((a, b) => b.points - a.points);
-  for (const g of remaining) {
-    if (subjectsUsed.length >= 4) break;
-    subjectsUsed.push({ subject: g.subject, grade: g.grade, points: g.points, weight: 0.25 });
-    usedNames.add(norm(g.subject));
-  }
-
-  const r = subjectsUsed.slice(0, 4).reduce((s, g) => s + g.points, 0);
+  const r = subjectsUsed.reduce((s, g) => s + g.points, 0);
   const meetsRequirements = missingSubjects.length === 0;
 
-  // Apply calibration factor to match real KUCCPS PI values
-  const C = meetsRequirements && t > 0
-    ? Math.sqrt((r / R_MAX) * (t / T_MAX)) * 48 * CALIBRATION_FACTOR
-    : 0;
+  if (r === 0 || t === 0) {
+    return { score: 0, rawClusterScore: 0, aggregateScore: t, subjectsUsed: [], meetsRequirements: false, missingSubjects };
+  }
+
+  // KUCCPS formula calibrated against real 2024 data
+  const C = Math.sqrt((r / R_MAX) * (t / T_MAX)) * 48 * CALIBRATION_FACTOR;
 
   return {
     score: Math.round(C * 1000) / 1000,
@@ -319,7 +466,7 @@ export function calculateClusterScore(
   };
 }
 
-// ─── Bulk results ─────────────────────────────────────────────────────────────
+// ─── Bulk results ──────────────────────────────────────────────────────────────
 
 export function calculateAllClusterResults(
   userGrades: SubjectGrade[],
@@ -328,7 +475,7 @@ export function calculateAllClusterResults(
   return clusters
     .map(cluster => {
       const { score, rawClusterScore, aggregateScore, subjectsUsed, meetsRequirements, missingSubjects } =
-        calculateClusterScore(userGrades, cluster.requirements);
+        calculateClusterScore(userGrades, cluster.requirements, cluster.id);
 
       const eligibilityStatus: ClusterResult['eligibilityStatus'] =
         !meetsRequirements || score === 0 ? 'not_competitive' :
@@ -350,7 +497,7 @@ export function calculateAllClusterResults(
     .sort((a, b) => b.clusterScore - a.clusterScore);
 }
 
-// ─── Course matching ──────────────────────────────────────────────────────────
+// ─── Course matching ───────────────────────────────────────────────────────────
 
 export function matchCoursesWithCutoffs(
   clusterResults: ClusterResult[],
@@ -366,14 +513,18 @@ export function matchCoursesWithCutoffs(
   clusterResults.forEach(r => clusterMap.set(r.clusterId, r));
 
   return courses
-    .filter(c => c.cluster_id && clusterMap.get(c.cluster_id)?.meetsRequirements)
+    .filter(c => {
+      if (!c.cluster_id) return false;
+      const cr = clusterMap.get(c.cluster_id);
+      if (!cr) return false;
+      return cr.clusterScore > 0; // only show courses where cluster score > 0
+    })
     .map(course => {
       const clusterResult = clusterMap.get(course.cluster_id!)!;
       const cutoff = course.cutoff_2024 ?? 25;
       const scoreDiff = clusterResult.clusterScore - cutoff;
       const eligibilityStatus = determineEligibilityStatus(clusterResult.clusterScore, cutoff);
       const interestScore = Math.max(-100, Math.min(100, interestScores[course.field ?? ''] ?? 0));
-      // Combined score: base on how close you are to cutoff (positive = above) + interest boost
       const combinedScore = scoreDiff + (interestScore / 100) * 3;
 
       return {
@@ -386,6 +537,7 @@ export function matchCoursesWithCutoffs(
         field: course.field ?? 'General',
         clusterId: course.cluster_id!,
         clusterName: clusterResult.clusterName,
+        clusterNumber: extractClusterNumber(course.cluster_id!),
         userClusterScore: clusterResult.clusterScore,
         cutoff2024: cutoff,
         cutoff2023: course.cutoff_2023 ?? null,
@@ -397,13 +549,10 @@ export function matchCoursesWithCutoffs(
       };
     })
     .sort((a, b) => {
-      // Sort: eligible first, then borderline, then not competitive
-      // Within each group: closest to cutoff first (smallest positive diff = tightest match)
       const statusOrder = { likely_eligible: 0, borderline: 1, not_competitive: 2 };
       if (statusOrder[a.eligibilityStatus] !== statusOrder[b.eligibilityStatus]) {
         return statusOrder[a.eligibilityStatus] - statusOrder[b.eligibilityStatus];
       }
-      // Tightest match first: smallest absolute difference
       return Math.abs(a.scoreDifference) - Math.abs(b.scoreDifference);
     });
 }
@@ -417,7 +566,6 @@ export function buildKuccpsChoices(matches: CourseMatch[]): KuccpsChoice[] {
 
   if (!matches.length) return [];
 
-  // Slot 1: a/b/c — 3 courses from your best cluster (closest to its cutoff)
   const topClusterId = matches[0].clusterId;
   matches.filter(m => m.clusterId === topClusterId).slice(0, 3).forEach((course, i) => {
     choices.push({ position: `1${'abc'[i]}`, rank: 1, subRank: 'abc'[i], course, isTopChoice: true });
@@ -425,7 +573,6 @@ export function buildKuccpsChoices(matches: CourseMatch[]): KuccpsChoice[] {
   });
   usedClusters.add(topClusterId);
 
-  // Slots 2–6: one per next best distinct cluster
   let slot = 2;
   for (const match of matches) {
     if (slot > 6) break;
@@ -436,7 +583,6 @@ export function buildKuccpsChoices(matches: CourseMatch[]): KuccpsChoice[] {
     slot++;
   }
 
-  // Extras: up to 25 — courses from ALL clusters, closest match first
   let extras = 0;
   for (const match of matches) {
     if (extras >= 25) break;
@@ -449,7 +595,7 @@ export function buildKuccpsChoices(matches: CourseMatch[]): KuccpsChoice[] {
   return choices;
 }
 
-// ─── Helpers ──────────────────────────────────────────────────────────────────
+// ─── Helpers ───────────────────────────────────────────────────────────────────
 
 export function determineEligibilityStatus(
   score: number,
